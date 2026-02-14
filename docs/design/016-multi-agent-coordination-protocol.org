@@ -1,0 +1,649 @@
+#+TITLE: 016 - Multi-Agent Coordination Protocol
+#+AUTHOR: dev-agent-backlog
+#+STATUS: Draft
+#+CATEGORY: feature
+#+CREATED: [2026-02-10]
+#+LAST_MODIFIED: [2026-02-10]
+#+SETUPFILE: ../../org-setup.org
+
+* Summary
+
+backlog.org needs a coordination protocol to support multi-agent workflows
+(parallel workspaces, subagents, human + multiple agents) without adding
+infrastructure. This document defines six primitives---claiming, ready-work
+queries, dependencies, agent handoff, progress isolation, and
+commit-as-write-barrier---that extend the existing flat-file backlog with
+conventions enforced through skills, CLAUDE.md, and AGENTS.md.
+
+* Context
+
+** Why Multi-Agent Now
+
+The single-agent assumption that originally shaped dev-agent-backlog is
+breaking down:
+
+- *Claude subagents*: Claude Code's Task tool spawns subagents that can work
+  concurrently. A parent agent may fan out work and fan in results.
+- *Parallel workspaces*: Git worktrees or separate checkouts allow multiple
+  agents to work on different tasks simultaneously.
+- *meta-agent-shell*: Coordination patterns like per-agent files and dispatcher
+  routing are emerging in agent orchestration systems.
+- *Human + agent*: A human may work alongside one or more agents, all touching
+  backlog.org.
+
+Without coordination, double-work (two agents claiming the same task),
+stale reads (agent reads backlog before another's commit), and merge
+conflicts (concurrent writes to the same file) become likely.
+
+** What We Learned from Prior Systems
+
+| System | Key Pattern | Our Takeaway |
+|--------+-------------+--------------|
+| [[https://github.com/steveyegge/beads][Beads]] | Atomic claiming, =bd ready= query, waits-for gates, hash IDs | Ready-work and dependency primitives are essential; hash IDs sacrifice readability |
+| [[https://github.com/anthropics/claude-code][meta-agent-shell]] | Per-agent files, dispatcher pattern, agent identity | Agent identity declarations and per-agent progress files reduce contention |
+| [[https://github.com/jwalsh/agent-shell-system][Forge agent-shell-system]] | Dashboard federation, elisp coordination, centralized dispatch | Emacs integration is valuable but orthogonal---defer to 017 |
+| [[https://github.com/MrLesk/Backlog.md][Backlog.md]] | YAML dependencies, assignee field, MCP-native ops | Explicit dependencies and assignee are portable; MCP adds complexity |
+| [[file:008-compound-engineering-patterns.org][Compound Engineering]] | Parallel review agents, worktree isolation, research-then-plan | Fan-out/fan-in patterns need expressible dependencies |
+
+** The Flat-File Constraint
+
+backlog.org is a flat org-mode file. There is no SQLite database, no daemon
+process, no MCP server mediating access. This is intentional:
+
+- *Human readability*: Anyone can open the file and understand the state.
+- *Git as infrastructure*: Version control provides history, branching, and
+  merge conflict detection.
+- *Zero dependencies*: No runtime, no server, no network.
+
+The implication: coordination must come from *conventions* (property formats,
+commit protocols) enforced by *skills and commands* (CLAUDE.md instructions,
+slash commands). Git commit is the only atomic operation available.
+
+* Goals and Non-Goals
+
+** Goals
+
+- Multiple agents can share backlog.org safely, with git detecting conflicts.
+- Claiming a task prevents double-work via optimistic locking.
+- Agents can independently determine which tasks are ready to work on.
+- Fan-out (one task spawns many) and fan-in (many tasks gate one) are
+  expressible using dependency properties.
+- Agent-to-agent handoff is supported via addressable notes.
+- Frequent progress writes don't cause merge conflicts on backlog.org.
+
+Success criteria:
+- Two agents working concurrently on the same repo can each pick a task
+  without collision.
+- An agent can query "what's ready?" and get only unblocked, unclaimed tasks.
+- A parent agent can express "task X waits for tasks A, B, C" and the system
+  resolves when all are DONE.
+
+** Non-Goals
+
+- *Emacs integration modalities*: How agents interact with Emacs (text-only,
+  emacsclient, agent-shell) is deferred to 017.
+- *MCP server*: No daemon or server mediating backlog access.
+- *Beads-level infrastructure*: No hash IDs, no graph database, no tombstone
+  GC.
+- *Real-time sync*: Agents coordinate via git commits, not live updates.
+- *Conflict resolution*: This protocol *detects* conflicts (via git); it does
+  not auto-resolve them.
+
+* Proposal
+
+** Overview
+
+Six coordination primitives, layered on the existing backlog format:
+
+#+begin_example
+                     +-----------------+
+                     | AGENTS.md       |  Agent identity declarations
+                     +-----------------+
+                              |
+                     +--------v--------+
+                     | backlog.org     |  :CLAIMED_BY:, :BLOCKED_BY:,
+                     |                 |  :WAITS_FOR:, :HANDOFF:
+                     +--------+--------+
+                              |
+                     +--------v--------+
+                     | .progress/      |  Per-task append-only logs
+                     | <task-id>.org   |  (reduces merge conflicts)
+                     +-----------------+
+#+end_example
+
+** Primitive 1: Claiming
+
+*** Property
+
+=:CLAIMED_BY:= on a backlog task entry. Value is an agent identity string
+declared in AGENTS.md.
+
+#+begin_src org
+,*** WIP [DAB-016-01] Define agent identity convention
+:PROPERTIES:
+:DESIGN: [[file:docs/design/016-multi-agent-coordination-protocol.org::*Define agent identity convention][DAB-016-01 in 016]]
+:CLAIMED_BY: claude-workspace-1
+:WORKED_BY: claude-workspace-1
+:END:
+#+end_src
+
+*** Protocol
+
+1. Agent reads backlog.org (after =git pull=).
+2. Agent finds an unclaimed, ready task.
+3. Agent sets =:CLAIMED_BY:= to its identity and commits immediately.
+4. Agent pushes. If push succeeds, claim is held.
+5. If push fails due to conflict on =:CLAIMED_BY:=, another agent claimed
+   first. Agent resets, pulls, and picks a different task.
+
+This is *optimistic locking*: assume no contention, detect it on push.
+
+*** Identity Format
+
+Agent identity is a free-form string. Conventions:
+- =claude-code= --- default single-agent identity (backwards-compatible)
+- =claude-workspace-N= --- numbered parallel workspaces
+- =claude-subagent-<task-id>= --- subagent working a specific task
+- =human= --- human working directly
+- Custom identifiers declared in AGENTS.md
+
+** Primitive 2: Ready Work
+
+*** Definition
+
+A task is *ready* when all of the following are true:
+- Status is =TODO= (not =WIP=, =HOLD=, =DONE=)
+- No =:CLAIMED_BY:= property set (or property is empty)
+- No unresolved =:BLOCKED_BY:= (referenced task is not DONE)
+- No unresolved =:WAITS_FOR:= (not all referenced tasks are DONE)
+
+*** =/ready= Command
+
+New slash command that scans backlog.org and returns ready tasks sorted by
+priority:
+
+#+begin_example
+$ /ready
+
+## Ready Tasks
+
+| ID | Title | Priority | Effort |
+|----|-------|----------|--------|
+| DAB-016-06 | Create /ready command | p1 | M |
+| DAB-016-07 | Update /task-start with claim | p1 | M |
+| DAB-016-11 | Implement .progress/ convention | p2 | M |
+#+end_example
+
+*** Enhanced =backlog-resume=
+
+Update the existing =backlog-resume= skill to:
+1. Show WIP tasks first (existing behavior).
+2. If no WIP tasks, show ready tasks (new behavior).
+3. Flag tasks with stale claims (claimed but no commit activity).
+
+** Primitive 3: Dependencies / Waits-For
+
+*** =:BLOCKED_BY:= --- Simple 1:1 Blocking
+
+A task cannot start until its blocker is DONE:
+
+#+begin_src org
+,*** TODO [DAB-016-07] Update /task-start with claim protocol
+:PROPERTIES:
+:BLOCKED_BY: DAB-016-02
+:END:
+#+end_src
+
+Semantics: DAB-016-07 is not ready until DAB-016-02 has status DONE.
+
+*** =:WAITS_FOR:= --- Fan-In Gate
+
+A task cannot start until *all* listed tasks are DONE:
+
+#+begin_src org
+,*** TODO [DAB-016-10] Add dependency checking to /ready and backlog-resume
+:PROPERTIES:
+:WAITS_FOR: DAB-016-06, DAB-016-08
+:END:
+#+end_src
+
+Semantics: DAB-016-10 is not ready until both DAB-016-06 and DAB-016-08
+have status DONE. Inspired by Beads' waits-for gates.
+
+*** Distinction
+
+- =:BLOCKED_BY:= is for simple sequential dependencies (one task blocks
+  another). Takes a single task ID.
+- =:WAITS_FOR:= is for fan-in patterns (multiple tasks gate one). Takes a
+  comma-separated list of task IDs.
+
+Both properties reference task IDs that may be in backlog.org or in design
+docs. The =/ready= command and =backlog-resume= skill resolve these by
+checking the referenced task's status.
+
+** Primitive 4: Agent Handoff
+
+*** Addressable Handoff Notes
+
+Extend the existing =:HANDOFF:= property with an optional =@agent-id:=
+prefix for agent-specific notes:
+
+#+begin_src org
+,*** WIP [DAB-016-07] Update /task-start with claim protocol
+:PROPERTIES:
+:HANDOFF: @claude-workspace-2: PR drafted, needs test for conflict case
+:HANDOFF+: @human: Review the git protocol section before merging
+:HANDOFF+: General note visible to anyone picking this up
+:END:
+#+end_src
+
+*** Backwards Compatibility
+
+Notes without an =@= prefix are visible to all agents (current behavior).
+The =@agent-id:= prefix is a filtering hint, not access control---any agent
+can read any note, but =backlog-resume= highlights notes addressed to the
+current agent.
+
+** Primitive 5: Progress Isolation
+
+*** Problem
+
+If multiple agents write progress notes directly into backlog.org, merge
+conflicts are frequent. The file is the single point of contention.
+
+*** Solution: =.progress/= Directory
+
+Per-task append-only progress files:
+
+#+begin_example
+.progress/
+  DAB-016-01.org
+  DAB-016-07.org
+#+end_example
+
+Each file contains timestamped entries:
+
+#+begin_src org
+,* [2026-02-10 10:30] claude-workspace-1
+Started implementing agent identity convention.
+Decided on free-form string declared in AGENTS.md.
+
+,* [2026-02-10 11:15] claude-workspace-1
+Completed AGENTS.md template. Moving to CLAUDE.md update.
+#+end_src
+
+*** Integration
+
+- Agents append to =.progress/<task-id>.org= instead of adding inline notes
+  to backlog.org.
+- =backlog-resume= reads both backlog.org =:HANDOFF:= and
+  =.progress/<task-id>.org= for context.
+- =/task-complete= consolidates relevant progress into a final summary.
+- backlog.org remains the authoritative state (status, properties); progress
+  files are supplementary logs.
+
+** Primitive 6: Commit-as-Write-Barrier
+
+*** Protocol
+
+All agents follow this read/write discipline:
+
+1. *Pull before read*: =git pull --rebase= before reading backlog.org.
+2. *Commit after write*: Every property change to backlog.org is committed
+   immediately (not batched with implementation changes).
+3. *Push promptly*: Push claim commits as soon as possible to minimize the
+   race window.
+4. *Conflict = lost race*: A merge conflict on =:CLAIMED_BY:= means another
+   agent claimed the task first. Back off and pick another.
+
+*** Enforcement
+
+This protocol is enforced by convention in CLAUDE.md and the claiming
+commands, not by tooling. The =backlog-update= skill is updated to remind
+agents to pull before reading.
+
+** Alternatives Considered
+
+*** Database-Backed Coordination (Rejected)
+
+Using SQLite or a similar database for task state would provide true atomic
+operations but violates the flat-file constraint. The human-readability and
+zero-dependency goals outweigh coordination convenience.
+
+*** MCP Server Mediating Access (Deferred)
+
+An MCP server could serialize access to backlog.org, eliminating race
+conditions entirely. However, this adds runtime infrastructure and a single
+point of failure. May revisit if git-based coordination proves insufficient.
+
+*** Lock Files (Rejected)
+
+A =.backlog.lock= file could prevent concurrent access. But lock files are
+fragile (stale locks from crashed processes) and don't compose well with git
+workflows.
+
+*** Beads-Style Hash IDs (Rejected)
+
+Hash-based IDs would eliminate ID collision but hurt readability. Our
+sequential IDs ([DAB-016-01]) are human-friendly and collision risk is
+manageable with the claiming protocol.
+
+* Decision
+
+Implement in three phases, with each phase independently useful:
+
+** Phase 1: Foundation (p0)
+
+Define the property formats, update CLAUDE.md, and create the AGENTS.md
+template. This establishes the vocabulary that all subsequent work builds on.
+
+Deliverables:
+- Agent identity convention
+- =:CLAIMED_BY:=, =:BLOCKED_BY:=, =:WAITS_FOR:= property definitions
+- CLAUDE.md multi-agent protocol section
+- AGENTS.md template
+
+** Phase 2: Commands (p1)
+
+Create the =/ready= command, integrate claiming into =/task-start=, and
+enhance =backlog-resume= with ready-work filtering. This makes the protocol
+operational.
+
+Deliverables:
+- =/ready= slash command
+- Claim-on-start in =/task-start=
+- Ready-work logic in =backlog-resume=
+- Pull-before-read in =backlog-update=
+- Dependency resolution in =/ready= and =backlog-resume=
+
+** Phase 3: Isolation (p2)
+
+Add =.progress/= files, addressable handoff, and reconciliation support.
+This reduces merge conflicts and improves multi-agent coordination quality.
+
+Deliverables:
+- =.progress/= directory convention
+- =@agent-id:= addressable handoff
+- Multi-agent reconciliation in =/reconcile-backlog=
+- =/unclaim= command
+
+* Risks & Mitigations
+
+| Risk | Likelihood | Impact | Mitigation |
+|------+------------+--------+------------|
+| Race condition on claims (two agents push simultaneously) | Medium | Low (one fails, picks another) | Optimistic locking via git; agents retry |
+| Stale claims (agent crashes, never unclaims) | Medium | Medium (task stuck) | =/reconcile-backlog= detects; =/unclaim= manual release |
+| Dependency cycles (A blocks B blocks A) | Low | High (both stuck) | =/ready= can optionally detect cycles |
+| Merge conflicts on backlog.org despite protocol | Medium | Low (git handles) | Progress isolation reduces frequency; small atomic commits |
+| Complexity creep (too many properties) | Medium | Medium (harder to learn) | Phase approach; each phase is independently useful |
+
+* Questions                                                      :questions:
+
+** OPEN Should =.progress/= files be committed or gitignored?
+
+Committed:
+- Persistent across machines, visible in PRs
+- Adds noise to git history
+- Available for reconciliation
+
+Gitignored:
+- Ephemeral, local-only
+- No git noise
+- Lost on clone/checkout
+
+Leaning toward: Committed for multi-machine workflows, with a convention to
+=.gitignore= them in projects that prefer clean history.
+
+** OPEN Should =/ready= validate dependency cycles?
+
+Cycle detection adds complexity but prevents hard-to-debug stuck states.
+
+Options:
+- Yes, always check (safer, slower)
+- No, trust the author (simpler)
+- Warn but don't block (compromise)
+
+** OPEN Should =/ready= consider design doc tasks not yet in backlog?
+
+Currently, only tasks in backlog.org are "active." Design docs may have
+TODO tasks that haven't been queued yet.
+
+Options:
+- Only backlog tasks (current scope, simpler)
+- Include design doc tasks with a flag (=/ready --include-docs=)
+- Always include (broader visibility, noisier)
+
+** OPEN How to handle stale claims (TTL, manual release, reconcile detection)?
+
+An agent may crash or disconnect without unclaiming its task.
+
+Options:
+- *TTL*: =:CLAIMED_AT:= timestamp, auto-expire after N hours
+- *Manual release*: =/unclaim <task-id>= command only
+- *Reconcile detection*: =/reconcile-backlog= flags stale claims
+- *Combination*: Reconcile detects, human/agent manually releases
+
+Leaning toward: Reconcile detection + =/unclaim= command (no TTL complexity).
+
+** OPEN Should =:BLOCKS:= (forward reference) be supported alongside =:BLOCKED_BY:=?
+
+=:BLOCKED_BY:= is a backward reference ("I'm blocked by X").
+=:BLOCKS:= would be a forward reference ("I block Y").
+
+Options:
+- =:BLOCKED_BY:= only (simpler, one direction)
+- Both directions (redundant but discoverable)
+- =:BLOCKED_BY:= only, with =/ready= inferring forward relationships
+
+Leaning toward: =:BLOCKED_BY:= only. Forward references create maintenance
+burden and can drift out of sync.
+
+** DECIDED Agent identity = free-form string, declared in AGENTS.md
+:PROPERTIES:
+:DECIDED: [2026-02-10]
+:END:
+
+Free-form string allows flexibility for different orchestration patterns
+(workspace numbering, subagent naming, custom identifiers). AGENTS.md
+serves as the registry for a project's known agents.
+
+** DECIDED Claiming = =:CLAIMED_BY:= property + git commit
+:PROPERTIES:
+:DECIDED: [2026-02-10]
+:END:
+
+Optimistic locking via git push is the simplest approach that works with the
+flat-file constraint. No daemon, no lock file, no database.
+
+** DECIDED Handoff = =@agent-id:= prefix in =:HANDOFF:=
+:PROPERTIES:
+:DECIDED: [2026-02-10]
+:END:
+
+Backwards-compatible extension of existing =:HANDOFF:= property. Notes
+without prefix remain visible to all agents.
+
+** DECIDED Progress isolation = =.progress/<task-id>.org= files
+:PROPERTIES:
+:DECIDED: [2026-02-10]
+:END:
+
+Per-task files eliminate backlog.org as a merge conflict bottleneck for
+progress notes. Append-only format is simple and git-friendly.
+
+* Tasks                                                              :tasks:
+
+** Phase 1: Foundation                                                 :p0:
+
+*** TODO [DAB-016-01] Define agent identity convention                 :p0:
+:PROPERTIES:
+:EFFORT: S
+:END:
+
+Document the agent identity format: free-form string, declared in AGENTS.md.
+Define conventions for common patterns (=claude-code=, =claude-workspace-N=,
+=claude-subagent-<task-id>=, =human=). Update org-setup.org if needed.
+
+*** TODO [DAB-016-02] Add =:CLAIMED_BY:= property to task format      :p0:
+:PROPERTIES:
+:EFFORT: S
+:END:
+
+Add =:CLAIMED_BY:= to the backlog task property drawer. Update
+=plugin/templates/= and =plugin/commands/task-queue.md= to include the
+property. Document in CLAUDE.md property reference.
+
+*** TODO [DAB-016-03] Add =:BLOCKED_BY:= and =:WAITS_FOR:= properties :p0:
+:PROPERTIES:
+:EFFORT: S
+:END:
+
+Define =:BLOCKED_BY:= (single task ID) and =:WAITS_FOR:= (comma-separated
+task IDs) properties. Add to property reference in CLAUDE.md. Update task
+template to include optional dependency properties.
+
+*** TODO [DAB-016-04] Update CLAUDE.md with multi-agent protocol section :p0:
+:PROPERTIES:
+:EFFORT: M
+:BLOCKED_BY: DAB-016-01
+:END:
+
+Add a "Multi-Agent Coordination" section to CLAUDE.md covering:
+- Agent identity and AGENTS.md
+- Claiming protocol (pull, set, commit, push, retry)
+- Ready-work definition
+- Dependency properties
+- Commit-as-write-barrier discipline
+- Progress isolation with =.progress/=
+
+*** TODO [DAB-016-05] Create AGENTS.md template                       :p0:
+:PROPERTIES:
+:EFFORT: M
+:BLOCKED_BY: DAB-016-01
+:END:
+
+Create =plugin/templates/agents.md= with:
+- Agent registry table (identity, type, description)
+- Conventions section (naming patterns)
+- Example entries for common patterns
+- Init.sh integration to copy template on project setup
+
+** Phase 2: Commands                                                   :p1:
+
+*** TODO [DAB-016-06] Create =/ready= command                         :p1:
+:PROPERTIES:
+:EFFORT: M
+:BLOCKED_BY: DAB-016-03
+:END:
+
+New slash command =plugin/commands/ready.md= that:
+1. Reads backlog.org Active section
+2. Filters to ready tasks (TODO, unclaimed, unblocked)
+3. Sorts by priority (p0 > p1 > p2)
+4. Displays as table with ID, title, priority, effort
+
+*** TODO [DAB-016-07] Update =/task-start= with claim protocol        :p1:
+:PROPERTIES:
+:EFFORT: M
+:BLOCKED_BY: DAB-016-02
+:END:
+
+Modify =plugin/commands/task-start.md= to:
+1. Check =:CLAIMED_BY:= before starting work
+2. If unclaimed, set =:CLAIMED_BY:= to current agent identity
+3. Commit the claim immediately (separate from work commits)
+4. If already claimed by another agent, warn and offer alternatives
+5. Update =:WORKED_BY:= as before
+
+*** TODO [DAB-016-08] Update =backlog-resume= with ready-work logic   :p1:
+:PROPERTIES:
+:EFFORT: M
+:BLOCKED_BY: DAB-016-02
+:END:
+
+Modify =plugin/skills/backlog-resume/SKILL.md= to:
+1. Show WIP tasks first (existing behavior)
+2. If no WIP, show ready tasks from =/ready= logic
+3. Skip claimed tasks (unless claimed by current agent)
+4. Read =.progress/= files for additional context (if they exist)
+
+*** TODO [DAB-016-09] Update =backlog-update= with pull-before-read   :p1:
+:PROPERTIES:
+:EFFORT: S
+:END:
+
+Modify =plugin/skills/backlog-update/SKILL.md= to:
+1. Remind agent to =git pull --rebase= before reading backlog.org
+2. After writing changes, commit backlog.org separately from code changes
+3. Push promptly after backlog commits
+
+*** TODO [DAB-016-10] Add dependency checking to =/ready= and =backlog-resume= :p1:
+:PROPERTIES:
+:EFFORT: M
+:WAITS_FOR: DAB-016-06, DAB-016-08
+:END:
+
+Enhance =/ready= and =backlog-resume= to resolve dependencies:
+1. Parse =:BLOCKED_BY:= and =:WAITS_FOR:= properties
+2. Look up referenced task statuses in backlog.org and design docs
+3. Exclude tasks with unresolved dependencies from ready list
+4. Show blocked tasks separately with reason
+
+** Phase 3: Isolation                                                  :p2:
+
+*** TODO [DAB-016-11] Implement =.progress/= directory convention     :p2:
+:PROPERTIES:
+:EFFORT: M
+:END:
+
+Define and implement the =.progress/= directory:
+1. Document file format (timestamped org entries)
+2. Update =plugin/templates/= with =.progress/.gitkeep=
+3. Update =/task-start= to create progress file on claim
+4. Update =backlog-resume= to read progress files
+5. Add =.progress/= to init.sh scaffolding
+
+*** TODO [DAB-016-12] Add addressable handoff convention               :p2:
+:PROPERTIES:
+:EFFORT: S
+:END:
+
+Document the =@agent-id:= prefix convention for =:HANDOFF:= property.
+Update =backlog-resume= to highlight notes addressed to current agent.
+Ensure backwards compatibility with unprefixed notes.
+
+*** TODO [DAB-016-13] Update =/reconcile-backlog= for multi-agent      :p2:
+:PROPERTIES:
+:EFFORT: M
+:END:
+
+Enhance =plugin/commands/reconcile-backlog.md= to:
+1. Detect stale claims (claimed but no recent commits by that agent)
+2. Validate dependency references (referenced tasks exist)
+3. Flag orphaned =.progress/= files (task completed or removed)
+4. Report agent activity summary
+
+*** TODO [DAB-016-14] Create =/unclaim= command                       :p2:
+:PROPERTIES:
+:EFFORT: S
+:END:
+
+New slash command =plugin/commands/unclaim.md= that:
+1. Takes a task ID argument
+2. Clears =:CLAIMED_BY:= property
+3. Commits the change
+4. Useful for releasing stale claims or reassigning work
+
+* References
+
+- [[file:009-beads-features.org][009 - Beads-Inspired Features]] - Ready-work and dependency analysis
+- [[file:008-compound-engineering-patterns.org][008 - Compound Engineering Patterns]] - Multi-agent review, worktree patterns
+- [[file:005-gastown-features.org][005 - Gastown-Inspired Features]] - Handoff notes, attribution, auto-resume
+- [[file:004-agent-integration.org][004 - Agent Integration]] - Current command/skill architecture
+- [[file:015-backlog-md-patterns.org][015 - Backlog.md Patterns Analysis]] - Dependency and assignee patterns
+- [[https://github.com/steveyegge/beads][Beads]] - Distributed git-backed issue tracker
+- [[https://github.com/MrLesk/Backlog.md][Backlog.md]] - Markdown-native task manager with MCP
+
+* Changelog
+
+- *2026-02-10:* Initial draft
