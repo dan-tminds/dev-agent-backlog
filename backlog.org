@@ -7,14 +7,6 @@ Active tasks checked out from design docs.
 
 ** Active
 
-*** TODO [DAB-011-06] Test plugin locally                                 :p1:
-:PROPERTIES:
-:DESIGN: [[file:docs/design/011-plugin-architecture.org::*Tasks][DAB-011-06 in 011-plugin-architecture.org]]
-:EFFORT: M
-:END:
-
-Use =claude --plugin-dir ./plugin= to test all commands and skills.
-
 ** Blocked
 
 ** Up Next
