@@ -63,16 +63,8 @@ backlog.org is a human-readable hub linking to tasks wherever they live:
 
 Documents are numbered sequentially (001, 002, ...). Use `#+CATEGORY:` in the
 document frontmatter to classify documents. Valid categories are defined in
-`README.org`:
-
-- `feature` - Core product functionality
-- `infra` - Infrastructure, tooling, CI/CD
-- `research` - Research, analysis, spikes
-- `hygiene` - Tech debt, chores, maintenance
-- `incident` - Bugs, outages, RCAs
-- `security` - Audits, vulnerabilities, hardening
-- `data` - Storage, pipelines, metrics
-- `bs` - Brainstorms, speculative ideas
+the project's `README.org` (the `* Document Categories` table). Always read
+the project's categories rather than assuming defaults.
 
 ## Slash Commands
 
