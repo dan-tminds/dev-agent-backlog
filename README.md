@@ -1,16 +1,17 @@
 # dev-agent-backlog
 
-A task management system for human-agent collaboration, built on two ideas:
+Claude plugin for `org-mode` based spec-driven development for humans and AI agents alike. `dev-agent-backlog` is built on two key concepts:
 
-1. **backlog.org as universal hub** - Human-readable join table linking to tasks wherever they live. Both humans and agents read the backlog; agents follow links to their native primitives (Claude Tasks, Design Documents, GitHub, etc.).
+1. **backlog.org as hub**: a project level org-mode file (human and machine readable) that links tasks to wherever they live, tracking work-in-progress.
 
-2. **Design docs for agent planning** - RFC/RFD-style org-mode documents where humans and agents think through problems before executing. Context, decisions, and tasks in ONE place.
+2. **design docs system**: RFC/RFD-style org-mode documents where humans and agents think through problems before executing. Critically: context, decisions, and tasks in ONE place.
 
 ## Installation (Claude Code Plugin)
 
 ```bash
 # Add the marketplace
 /plugin marketplace add farra/dev-agent-backlog
+
 
 # Install the plugin
 /plugin install backlog@dev-agent-backlog --scope project
@@ -338,18 +339,21 @@ Completed tasks in design docs also include:
 
 Documents are numbered sequentially (001, 002, 003...). Use `#+CATEGORY:` in
 the document header to classify documents. Valid categories are defined in
-`README.org`:
+each project's `README.org` (`* Document Categories` table). The defaults are:
 
-| Category | Description                        |
-|----------|------------------------------------|
-| feature  | Core product functionality         |
-| infra    | Infrastructure, tooling, CI/CD     |
-| research | Research, analysis, spikes         |
-| hygiene  | Tech debt, chores, maintenance     |
-| incident | Bugs, outages, RCAs                |
-| security | Audits, vulnerabilities, hardening |
-| data     | Storage, pipelines, metrics        |
-| bs       | Brainstorms, speculative ideas     |
+| Category     | Description                              |
+|--------------|------------------------------------------|
+| feature      | Core product functionality               |
+| infra        | Infrastructure, tooling, CI/CD           |
+| architecture | System design, strategy, north star docs |
+| research     | Research, analysis, spikes               |
+| hygiene      | Tech debt, chores, maintenance           |
+| incident     | Bugs, outages, RCAs                      |
+| security     | Audits, vulnerabilities, hardening       |
+| data         | Storage, pipelines, metrics              |
+| bs           | Brainstorms, speculative ideas           |
+
+Projects can customize these categories in their `README.org`.
 
 ## Philosophy
 
@@ -359,6 +363,23 @@ the document header to classify documents. Valid categories are defined in
 - **Plain text everything**: Git history is task history
 - **Agent-agnostic methodology**: The org-mode templates and workflow work with any AI coding agent that can read/write files. The Claude Code plugin adds convenience, but the core system is portable.
 
+## Relation to Spec-Driven Development
+
+[Spec-driven development](https://www.thoughtworks.com/en-us/insights/blog/agile-engineering-practices/spec-driven-development-unpacking-2025-new-engineering-practices) (SDD) emerged in 2025 as a name for the practice of writing structured specifications before asking AI agents to generate code. Tools like [AWS Kiro](https://kiro.dev/) and [GitHub Spec Kit](https://github.blog/ai-and-ml/generative-ai/spec-driven-development-with-ai-get-started-with-a-new-open-source-toolkit/) popularized the approach, and there's active [community debate](https://news.ycombinator.com/item?id=45935763) about where specs end and code begins.
+
+`dev-agent-backlog` shares the core SDD insight: **AI agents produce better work when given structured planning documents rather than ad-hoc prompts.** Where we differ is in how that structure should work:
+
+| Concern           | Typical SDD (Kiro, Spec Kit)                 | dev-agent-backlog                                     |
+|-------------------|----------------------------------------------|-------------------------------------------------------|
+| Spec structure    | Separate files (requirements, design, tasks) | Single design doc with all context inline             |
+| Source of truth   | Specs may be primary or disposable           | Design doc is permanent archive; backlog is transient |
+| Design refinement | Human reviews AI-generated specs             | Explicit `OPEN` / `DECIDED` workflow for questions    |
+| Task lifecycle    | Check off in task file                       | Checkout to backlog, reconcile back on completion     |
+
+We think of design docs as **thinking tools and permanent records**, not just prompts for code generation. The `OPEN` questions workflow forces explicit resolution before implementation. The backlog separation keeps session-specific noise out of the design record.
+
+For more detail, see [014 - Spec-Driven Development Research](docs/design/014-spec-driven-development-research.org).
+
 ## Learn More
 
 The system documents itself using design docs:
@@ -366,6 +387,8 @@ The system documents itself using design docs:
 - [Design Doc Pattern](docs/design/002-design-docs.org) - How design documents work
 - [Backlog Workflow](docs/design/003-backlog-workflow.org) - The checkout/reconcile workflow
 - [Plugin Architecture](docs/design/011-plugin-architecture.org) - Claude Code integration
+
+and so on.
 
 ## Prior Art
 
