@@ -29,16 +29,9 @@ Look at existing files in `docs/design/` to find the next available NNN:
 ### 2. Determine Category
 
 Read valid categories from `README.org` (the `* Document Categories` table).
+Projects define their own categories there — always use the project's list, not defaults.
 
-Ask the user which category applies, or infer from context:
-- `feature` - Core product functionality
-- `infra` - Infrastructure, tooling, CI/CD
-- `research` - Research, analysis, spikes
-- `hygiene` - Tech debt, chores, maintenance
-- `incident` - Bugs, outages, RCAs
-- `security` - Audits, vulnerabilities, hardening
-- `data` - Storage, pipelines, metrics
-- `bs` - Brainstorms, speculative ideas
+Ask the user which category applies, or infer from context.
 
 ### 3. Create the Document
 

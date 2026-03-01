@@ -1,7 +1,7 @@
 #+TITLE: NNN - Title
 #+AUTHOR: Author Name
 #+STATUS: Draft
-#+CATEGORY: feature | infra | research | hygiene | incident | security | data | bs
+#+CATEGORY: (see README.org for valid categories)
 #+CREATED: [YYYY-MM-DD]
 #+LAST_MODIFIED: [YYYY-MM-DD]
 #+SETUPFILE: ../../org-setup.org

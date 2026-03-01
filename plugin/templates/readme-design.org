@@ -6,6 +6,25 @@
 This directory contains design documents following an RFC/RFD pattern.
 Each document captures a decision, its rationale, and implementation tasks.
 
+* Document Categories
+
+Categories are specified via =#+CATEGORY:= in each document header.
+
+| Category     | Scope                                    |
+|--------------+------------------------------------------|
+| feature      | Core product functionality               |
+| infra        | Infrastructure, tooling, CI/CD           |
+| architecture | System design, strategy, north star docs |
+| research     | Research, analysis, spikes               |
+| hygiene      | Tech debt, chores, maintenance           |
+| incident     | Bugs, outages, RCAs                      |
+| security     | Audits, vulnerabilities, hardening       |
+| data         | Storage, pipelines, metrics              |
+| bs           | Brainstorms, speculative ideas           |
+
+Customize these categories to fit your project. Skills and commands read
+this table to determine valid categories.
+
 * Document Status
 
 | Status   | Meaning                                          |
