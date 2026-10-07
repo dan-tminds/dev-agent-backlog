@@ -31,6 +31,7 @@ Valid values for the =#+STATUS:= header field in design documents.
 | Active   | Implementation in progress                      |
 | Complete | Fully implemented and verified                  |
 | Living   | Ongoing reference, updated as system evolves    |
+| Superseded | Summarized by a checkpoint; read that instead |
 | Archived | No longer active (rejected, obsolete)           |
 
 * Task Statuses

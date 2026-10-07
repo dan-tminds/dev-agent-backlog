@@ -18,6 +18,7 @@ its rationale, and any implementation tasks.
 | Active   | Implementation in progress, some tasks complete  |
 | Complete | Fully implemented and verified                   |
 | Living   | Ongoing reference, updated as system evolves     |
+| Superseded | Summarized by a checkpoint (see =#+SUPERSEDED_BY:=) |
 | Archived | No longer active (rejected, obsolete, abandoned) |
 
 * Documents

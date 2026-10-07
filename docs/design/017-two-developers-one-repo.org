@@ -216,7 +216,8 @@ CLOSED: [2026-10-07]
 
 Clears working state in its own commit, records =#+WORKING_STATE:=, moves findings out of working notes first. =/task-complete= calls it.
 
-** TODO [DAB-017-08] =/backlog:checkpoint= and the =Superseded= status    :p2:
+** DONE [DAB-017-08] =/backlog:checkpoint= and the =Superseded= status    :p2:
+CLOSED: [2026-10-07]
 :PROPERTIES:
 :EFFORT: M
 :END:

@@ -32,7 +32,7 @@ If `#+STATUS:` is `Draft`:
 If already `Review` or `Accepted`:
 - Continue with the review process
 
-If `Active`, `Complete`, or `Archived`:
+If `Active`, `Complete`, `Superseded`, or `Archived`:
 - Abort: "Document is already past the review stage"
 
 ### 3. Review Open Questions
@@ -90,11 +90,15 @@ If no:
 - Leave as `Review` for further refinement
 - Summarize what was accomplished
 
-### 7. Offer to Queue
+### 7. If It Is a Checkpoint
 
-If document was marked Accepted:
-- Ask: "Would you like to queue the tasks to backlog.org now?"
-- If yes: run `/queue-design-doc` logic
+If the document was marked Accepted and has a `* What it supersedes` section, it is a checkpoint: run step 5 of `/backlog:checkpoint`, marking each doc it lists `Superseded`.
+
+### 8. Offer to Queue
+
+If document was marked Accepted and has `TODO` tasks:
+- Ask: "Would you like to queue the tasks now?"
+- If yes: run `/queue-design-doc` logic (marks each heading `:QUEUED:`)
 
 ## Status Transitions
 
