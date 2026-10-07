@@ -43,6 +43,7 @@ Defined in =org-setup.org=: =TODO= → =WIP= → =HOLD= | =DONE=
 | File                   | Purpose                         |
 |------------------------+---------------------------------|
 | [[file:org-setup.org][org-setup.org]]          | Shared org-mode configuration   |
-| [[file:backlog.org][backlog.org]]            | Working surface for active work |
+| =bin/backlog=           | The backlog, computed from the docs |
+| [[file:docs/loose-ends/][docs/loose-ends/]]       | Notes that belong to no doc     |
 | [[file:docs/design/README.org][docs/design/README.org]] | Index of design documents       |
 | [[file:CLAUDE.md][CLAUDE.md]]              | Agent instructions              |

@@ -192,6 +192,6 @@ Reconcile only doc 010 and any matching the pattern.
 
 ## Related Commands
 
-- `/reconcile-backlog` - Reconcile backlog.org entries
+- `/reconcile-backlog` - Find stale working state across the docs
 - `/task-complete` - Manually mark a single task complete
 - `/queue-design-doc` - Queue tasks for execution

@@ -77,7 +77,7 @@ After loading, these commands are available:
 | =M-x backlog/design-next-number=   | Get next available document number      |
 | =M-x backlog/design-status-report= | Show count of docs by status            |
 | =M-x backlog/design-category-report= | Show count of docs by category        |
-| =M-x backlog/task-queue=           | Queue task at point into backlog.org    |
+| =M-x backlog/task-queue=           | (Still writes backlog.org; see 017-10)  |
 
 ** Quick Actions
 

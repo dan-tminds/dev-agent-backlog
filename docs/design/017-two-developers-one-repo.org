@@ -224,7 +224,8 @@ CLOSED: [2026-10-07]
 
 The command, the status in both README templates, and the step in =/design-review= that marks the covered docs when a checkpoint is accepted.
 
-** TODO [DAB-017-09] Setup without =backlog.org=, and =/backlog:migrate-backlog= :p0:
+** DONE [DAB-017-09] Setup without =backlog.org=, and =/backlog:migrate-backlog= :p0:
+CLOSED: [2026-10-07]
 :PROPERTIES:
 :EFFORT: M
 :END:
@@ -292,4 +293,4 @@ Moving them to =archive/= would keep them out of a glob, but agents read what th
 
 * Changelog
 
- - *2026-10-07:* Initial draft.
+ - *2026-10-07:* Initial draft, and tasks 01–09 built on the =two-developers= branch.

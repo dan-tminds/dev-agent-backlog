@@ -1,7 +1,7 @@
 {
   "name": "backlog",
   "description": "Design doc driven task management for human-agent collaboration",
-  "version": "1.0.0",
+  "version": "2.0.0",
   "author": {
     "name": "J. Aaron Farr"
   },
