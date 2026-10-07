@@ -138,6 +138,26 @@ class ParseDocTest(unittest.TestCase):
             ],
         )
 
+    def test_every_working_property_counts(self):
+        path = write(
+            self.root,
+            "docs/design/030-props.org",
+            """
+            * Tasks
+            ** DONE [HL-030-01] Linked
+            :PROPERTIES:
+            :CLAUDE_TASK: abc/1
+            :CLAUDE_TASK_LIST: abc
+            :TRANSCRIPT: [[file:~/x.md]]
+            :GITHUB: [[https://example.test/1][#1]]
+            :END:
+            """,
+        )
+        self.assertEqual(
+            backlog.parse_doc(path).working_state(),
+            ["HL-030-01 :CLAUDE_TASK:", "HL-030-01 :CLAUDE_TASK_LIST:", "HL-030-01 :TRANSCRIPT:"],
+        )
+
     def test_suffixed_task_ids(self):
         path = write(self.root, "docs/design/019-what-to-say.org", DONE_DOC)
         doc = backlog.parse_doc(path)

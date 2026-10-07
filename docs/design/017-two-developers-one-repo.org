@@ -173,14 +173,16 @@ CLOSED: [2026-10-07]
 
 =/task-queue=, =/queue-design-doc=, =/task-start=, =/task-hold=, =/task-link= and =/task-complete= read and write the task heading in its design doc. None of them touches =backlog.org=.
 
-** TODO [DAB-017-03] The skills read the docs                            :p0:
+** DONE [DAB-017-03] The skills read the docs                            :p0:
+CLOSED: [2026-10-07]
 :PROPERTIES:
 :EFFORT: S
 :END:
 
 =backlog-resume=, =backlog-update= and =claude-tasks-sync= use =bin/backlog= and the task headings; =backlog-update= writes progress under =:working:= and offers a loose end for a note with no doc.
 
-** TODO [DAB-017-04] Loose ends                                          :p1:
+** DONE [DAB-017-04] Loose ends                                          :p1:
+CLOSED: [2026-10-07]
 :PROPERTIES:
 :EFFORT: S
 :END:

@@ -1,136 +1,64 @@
 ---
 name: claude-tasks-sync
-description: Ensures Claude Tasks are cross-referenced in backlog.org. Triggers when creating Claude Tasks, using TodoWrite, or when subagents create tasks. This keeps backlog.org as the human-readable hub while agents use their native primitives. Trigger when using task management features, spawning subagents, or completing multi-step work.
+description: Ensures Claude Tasks that do design-doc work are cross-referenced from the task heading in the doc. Triggers when creating Claude Tasks, using TodoWrite, or when subagents create tasks for work on a design doc task. Keeps the design doc as the human-readable record while agents use their native primitives.
 ---
 
 # Claude Tasks Sync
 
-This skill ensures Claude Tasks are cross-referenced in backlog.org. The backlog is the universal hub - humans read it directly, agents follow links to their native primitives.
+This skill ensures a Claude Task doing the work of a design doc task is linked from that task's heading. The doc is where humans look; agents follow the link to their native primitive.
 
 ## Prerequisites
 
-**Before triggering, check that `backlog.org` exists in the project root.**
-
-If `backlog.org` does not exist, do NOT trigger this skill. The project hasn't been
-set up with the backlog system yet. Silently skip - Claude Tasks can still be used
-normally, they just won't be synced to a backlog.
+**Before triggering, check that `docs/design/` exists in the project root.** If it does not, silently skip; Claude Tasks work normally without it.
 
 ## Core Principle
 
 **Sync means cross-references, not content replication.**
 
-- When Claude creates a Task, ensure backlog.org has an entry with `:CLAUDE_TASK:` link
-- Don't duplicate task descriptions - just ensure the link exists
-- Humans read backlog.org; agents follow links to Claude Tasks
+- When a Claude Task is created for a design doc task, add `:CLAUDE_TASK:` to that task's heading
+- Don't copy descriptions either way
+- Don't mirror status automatically
+- A Claude Task with no design doc task behind it stays session-local. It is not tracked anywhere else, and that is fine: there is no backlog file to add it to. If the work turns out to matter beyond this session, it is either a task in a doc or a loose end (`/backlog:loose-end`).
 
 ## When to Trigger
 
-**Trigger conditions:**
-- Creating Claude Tasks (via TodoWrite or task management)
-- Spawning subagents that will create their own Tasks
+- Creating Claude Tasks (via TodoWrite or task management) for a design doc task
+- Spawning subagents that will create their own Tasks for one
 - After `/queue-design-doc` creates a Task List
-- When completing work that involved Claude Tasks
 
 ## Workflow
 
-### 1. When Creating Claude Tasks
+### 1. Find the Heading
 
-After creating one or more Claude Tasks:
+The design doc task is the one being worked: usually `WIP` under *In progress* in `bin/backlog`, or named by ID in the request.
 
-1. Read backlog.org's `* Current WIP` > `** Active` section
-2. For each Claude Task created:
-   - Check if a matching backlog entry exists (by task ID or title)
-   - If exists: add `:CLAUDE_TASK:` property if missing
-   - If not exists: create minimal backlog entry with link
-
-**Minimal backlog entry:**
+### 2. Add the Link
 
 ```org
-*** TODO Task title
+** WIP [DAB-012-08] Create sync skill
 :PROPERTIES:
+:QUEUED: [2026-10-01]
 :CLAUDE_TASK: <task-list-id>/<task-id>
-:EFFORT: M
-:HANDOFF:
-:WORKED_BY: claude-code
 :END:
 ```
 
-### 2. When Tasks Have Design Doc Origin
+Or, for a whole doc's Task List, `:CLAUDE_TASK_LIST: <task-list-id>` on each task heading it covers.
 
-If the task originated from a design doc (has `:DESIGN:` property), preserve it:
-
-```org
-*** TODO [DAB-012-08] Create sync skill
-:PROPERTIES:
-:DESIGN: [[file:docs/design/012-claude-tasks-integration.org::*Tasks][DAB-012-08]]
-:CLAUDE_TASK: <task-list-id>/<task-id>
-:EFFORT: M
-:END:
-```
-
-Both links coexist - `:DESIGN:` for the spec, `:CLAUDE_TASK:` for agent coordination.
+Both are working state: `/backlog:design-complete` removes them when the doc is finished.
 
 ### 3. When Subagents Create Tasks
 
-If spawning subagents:
-
-1. Note the Task List ID being used
-2. After subagent completes, check for any new Tasks created
-3. Ensure each new Task has a corresponding backlog entry
-
-### 4. Link Format
-
-The `:CLAUDE_TASK:` property format:
-
-```org
-:CLAUDE_TASK: <task-list-id>/<task-id>
-```
-
-Or for referencing just the Task List:
-
-```org
-:CLAUDE_TASK_LIST: <task-list-id>
-```
+After a subagent completes, check for new Tasks that correspond to design doc tasks and link them the same way.
 
 ## What NOT To Do
 
-- Don't copy task descriptions from Claude Tasks to backlog
-- Don't mirror status changes automatically
-- Don't create duplicate entries - one per task
-- Don't remove `:DESIGN:` or other existing links
-
-## Example
-
-```
-Claude: [Creates Task "Implement authentication" via TodoWrite]
-
-[Skill triggers]
-
-Claude: "I've created a Claude Task for this work. Let me ensure
-it's tracked in backlog.org...
-
-Added to backlog.org Active section:
-*** TODO Implement authentication
-:PROPERTIES:
-:CLAUDE_TASK: abc123/task-001
-:EFFORT: M
-:WORKED_BY: claude-code
-:END:
-
-The task is now visible to both humans (via backlog) and agents
-(via Claude Task)."
-```
+- Don't create task headings in a design doc just to hold a Claude Task
+- Don't remove existing properties
+- Don't create duplicate links - one per task
 
 ## Related Skills
 
 | Skill | Relationship |
 |-------|--------------|
-| `backlog-update` | Updates existing entries; this creates new ones |
-| `backlog-resume` | Reads `:CLAUDE_TASK:` links on session start |
-
-## Related Commands
-
-| Command | Relationship |
-|---------|--------------|
-| `/task-start` | Creates Claude Task at execution time |
-| `/queue-design-doc` | Creates Task List for all design doc tasks |
+| `backlog-update` | Records progress on the same heading |
+| `backlog-resume` | Reads `:CLAUDE_TASK:` on session start |

@@ -27,7 +27,7 @@ LOOSE_ENDS_DIR = "docs/loose-ends"
 
 # Properties that exist only while work is under way. /backlog:design-complete
 # clears them, and --check reports them on a doc that is finished.
-WORKING_PROPS = ("QUEUED", "HANDOFF", "REASON", "CLAUDE_TASK", "TRANSCRIPT")
+WORKING_PROPS = ("QUEUED", "HANDOFF", "REASON", "CLAUDE_TASK", "CLAUDE_TASK_LIST", "TRANSCRIPT")
 FINISHED = ("Complete", "Superseded", "Archived")
 
 DOC_NAME = re.compile(r"^(\d{3})-.+\.org$")

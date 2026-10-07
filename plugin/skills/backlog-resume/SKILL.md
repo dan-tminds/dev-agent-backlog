@@ -1,6 +1,6 @@
 ---
 name: backlog-resume
-description: Check for in-progress work on session start. Use when beginning a new session in a project with backlog.org. Triggers automatically at session start or when user says "what was I working on?", "resume", "continue", or "where did I leave off?". Surfaces WIP tasks and handoff notes to enable seamless session continuity.
+description: Check for in-progress work on session start. Use when beginning a new session in a project with docs/design/. Triggers automatically at session start or when user says "what was I working on?", "resume", "continue", or "where did I leave off?". Surfaces WIP tasks and handoff notes from the design docs to enable seamless session continuity.
 ---
 
 # Backlog Resume
@@ -9,93 +9,71 @@ This skill checks for in-progress work when starting a new session, implementing
 
 ## Prerequisites
 
-**Before triggering, check that `backlog.org` exists in the project root.**
+**Before triggering, check that `docs/design/` exists in the project root.**
 
-If `backlog.org` does not exist, do NOT trigger this skill. The project hasn't been
-set up with the backlog system yet. Silently skip - don't suggest setup or explain
-why the skill isn't running.
+If it does not, do NOT trigger this skill. The project hasn't been set up with the backlog system. Silently skip.
 
-## When to Offer This Workflow
+If the project still has a committed `backlog.org` with a `* Current WIP` section, it predates design doc 017: mention once that `/backlog:migrate-backlog` moves it into the docs, then read it the old way.
 
-**Trigger conditions:**
-- `backlog.org` exists in the project root, AND
-- Starting a new session in a project with `backlog.org`
-- User asks "what was I working on?", "resume", "continue"
-- User says "where did I leave off?"
+## Where the State Is
 
-**Initial check:**
-Read `backlog.org` and look for WIP tasks in the Active section.
+There is no backlog file. Every task's state is on its heading in its design doc, and `bin/backlog` prints the view:
+
+- *In progress* — `WIP` headings
+- *On hold* — `HOLD` headings, with `:REASON:`
+- *Queued* — `TODO` headings with `:QUEUED:`
+- *Loose ends* — files in `docs/loose-ends/`, notes that belong to no doc
 
 ## Workflow
 
-### 1. Check for WIP Tasks
+### 1. Pull, Then Read
 
-Read `* Current WIP` > `** Active` section in backlog.org.
+If the repo has a remote and the working tree is clean, `git pull --ff-only` first: the other developer's started and finished tasks arrive as commits to the docs. Don't pull over uncommitted work; just say the view may be behind.
 
-Look for tasks with state `WIP` (work in progress).
+Run `bin/backlog`. (If `bin/backlog` is missing, run the plugin's `scripts/backlog.py` directly and suggest `/backlog:setup` to install it.)
 
-### 2. Surface Handoff Notes and Claude Task State
+### 2. Surface WIP Tasks
 
-For each WIP task found:
-- Read the `:HANDOFF:` property
-- Read recent progress notes (entries starting with `[YYYY-MM-DD]`)
-- Check for `:CLAUDE_TASK:` property
-
-**If `:CLAUDE_TASK:` exists:**
-- Note the Task List ID for cross-session coordination
-- Check if there are related Tasks or dependencies
-- This task has agent coordination enabled
+For each task under *In progress*:
+- Read `:HANDOFF:` and `:WORKED_BY:` from the heading
+- Read the last entry or two of its `:working:` subtree
+- If `:CLAUDE_TASK:` is set, note the Task List ID
+- If `:WORKED_BY:` doesn't include the current person, it may be the other developer's: check `git log -3 --format='%an %ar' -- <doc>` and say whose it looks like before offering it
 
 ### 3. Present Resume Option
-
-If WIP task(s) found, display:
 
 ```
 ## Work in Progress
 
-Found active work from previous session:
-
-### [TASK-ID] Task Title
+### [TASK-ID] Task Title  (docs/design/NNN-doc.org:LINE)
 
 **Handoff notes:**
-> <content of :HANDOFF: property>
+> <:HANDOFF:>
 
 **Recent progress:**
-> <last progress note>
-
-**Claude Task:** <task-list-id>/<task-id> (if present)
+> <last working note>
 
 Continue working on this task?
 ```
 
-The Claude Task link (if present) enables cross-session coordination.
-Follow the link to check for any updates from subagents or other sessions.
-
 ### 4. Quick Consistency Check
 
-While reviewing backlog.org, perform a lightweight consistency check:
+Run `bin/backlog --check`. It is fast and reports:
+- two docs with one number (suggest `/backlog:renumber-design-doc`)
+- one task ID in two places
+- a task whose ID doesn't match its doc's number
+- working state left in a `Complete` or `Superseded` doc (suggest `/backlog:design-complete`)
 
-**Stale entries:**
-- If any tasks show `*** DONE` in backlog.org, they should have been removed
-- Suggest: "Found completed task [ID] still in backlog. Remove it?"
-
-**Design doc drift:**
-- For WIP/TODO tasks with `:DESIGN:` links, spot-check the source doc
-- If the source doc shows the task as `** DONE` but backlog shows TODO/WIP:
-  - Suggest removing the stale backlog entry
-- If the design doc `#+STATUS:` is Complete but tasks are still in backlog:
-  - Suggest running `/reconcile-backlog` to clean up
-
-This catches drift early without running a full reconciliation.
+Mention what it finds in one or two lines; don't fix anything unasked.
 
 ### 5. If No WIP Tasks
 
-Check if there are TODO tasks in Active section:
+Show *Queued* and *Loose ends* from `bin/backlog`:
 
 ```
 ## Ready to Start
 
-No work in progress. Active queue:
+No work in progress. Queued:
 
 1. [TASK-ID-1] Task title
 2. [TASK-ID-2] Task title
@@ -105,36 +83,14 @@ Start one of these tasks?
 
 ### 6. Handle Response
 
-- If user wants to continue: Run `/task-start <task-id>`
-- If user wants different task: Queue or start the requested task
-- If user declines: Proceed with whatever they want to do
-
-## Example
-
-```
-User: <starts session>
-
-Claude: "Checking backlog.org for in-progress work...
-
-## Work in Progress
-
-Found active work from previous session:
-
-### [DAB-005-01] Implement handoff notes
-
-**Handoff notes:**
-> Stuck on property format. Check org-mode docs for multi-line properties.
-
-**Recent progress:**
-> [2026-01-03] Started implementation. Template updated.
-
-Continue working on this task?"
-```
+- Continue: run `/task-start <task-id>`
+- A different task: `/task-queue` or `/task-start` it
+- Declines: proceed with whatever they want to do
 
 ## Related Commands
 
 | Command | When to use |
 |---------|-------------|
 | `/task-start <id>` | Resume the WIP task |
-| `/task-queue <id>` | Add a new task to Active |
+| `/task-queue <id>` | Queue a new task |
 | `/task-hold <id> <reason>` | If task is blocked |
