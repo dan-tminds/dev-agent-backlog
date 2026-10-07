@@ -157,7 +157,8 @@ All five, in this order, because the earlier ones are independent of the later o
 :CATEGORY: tasks
 :END:
 
-** TODO [DAB-017-01] =bin/backlog=: the view, the next number, and the check  :p0:
+** DONE [DAB-017-01] =bin/backlog=: the view, the next number, and the check  :p0:
+CLOSED: [2026-10-07]
 :PROPERTIES:
 :EFFORT: M
 :END:
