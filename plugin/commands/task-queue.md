@@ -1,51 +1,45 @@
 ---
-description: Queue a task from design docs into backlog.org Active section
+description: Queue a task - mark it as next in its design doc
 argument-hint: <task-id>
 ---
 
 # Task Queue
 
-Queue task **$ARGUMENTS** into the backlog.org Active section.
+Queue task **$ARGUMENTS**: mark it, in its own design doc, as one of the tasks the team has said is next.
+
+There is no backlog file. The backlog is computed from the task headings in `docs/design/*.org` by `bin/backlog`, and a queued task is a `TODO` heading with a `:QUEUED:` property.
 
 ## Process
 
-1. **Find the task** in design docs:
-   - Look in `docs/design/*.org` for the task ID
-   - Task IDs follow pattern `[PROJECT-NNN-XX]`
+1. **Find the task** in `docs/design/*.org`:
+   - Search for the heading containing `[$ARGUMENTS]` (skip `#+begin_`…`#+end_` blocks; examples live there)
+   - If it is not found, say so and stop. If it is found twice, stop and suggest `bin/backlog --check`.
 
-2. **Extract task info**:
-   - Full heading
-   - `:EFFORT:` property if present
-   - Source file path
+2. **Check its state**:
+   - `DONE`: say so and stop
+   - `WIP` or `HOLD`: already on the backlog; say so and stop
+   - `TODO` with `:QUEUED:`: already queued; say so and stop
 
-3. **Add to backlog.org**:
-   - Insert under `* Current WIP` > `** Active` section
-   - Use this format:
+3. **Mark it queued** by adding to the heading's property drawer (create the drawer if it has none, directly under the heading and any `CLOSED:` line):
 
 ```org
-*** TODO [TASK-ID] Task Title
+** TODO [PROJECT-NNN-XX] Task title                                    :p1:
 :PROPERTIES:
-:DESIGN: [[file:docs/design/NNN-doc.org::*heading][TASK-ID in doc.org]]
-:EFFORT: <from source>
-:HANDOFF:
-:WORKED_BY:
+:EFFORT: M
+:QUEUED: [YYYY-MM-DD]
 :END:
-
-<brief description>
 ```
 
-   - `:HANDOFF:` starts empty (populated during work)
-   - `:WORKED_BY:` starts empty (updated by /task-start)
+4. **Update the doc's status**:
+   - If `#+STATUS:` is `Accepted`, change it to `Active` and update the row in `docs/design/README.org`
+   - If `Draft` or `Review`, leave it
 
-4. **Update source doc status**:
-   - Read the source design doc's `#+STATUS:` header
-   - If status is `Accepted`, change to `Active` (work has begun)
-   - If status is `Draft` or `Review`, leave as-is (task can still be queued)
-   - Update `docs/design/README.org` index if status changed
+5. **Commit** the doc (and README if changed) on its own: `chore: queue PROJECT-NNN-XX`.
 
-5. **Confirm** by showing the new entry
+6. **Confirm** by showing the output of `bin/backlog`.
 
 ## Files
 
-- Backlog: @backlog.org (Current WIP > Active section)
 - Design docs: `docs/design/*.org`
+- Index: `docs/design/README.org`
+- View: `bin/backlog`

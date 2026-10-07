@@ -1,23 +1,44 @@
 ---
-description: Move a task to HOLD/Blocked status with a reason
+description: Move a task to HOLD with a reason, in its design doc
 argument-hint: <task-id> <reason>
 ---
 
 # Task Hold
 
-Move task **$1** to blocked/hold status with reason: **$2**
+Put task **$1** on hold, with reason: **$2**
 
 ## Process
 
-1. **Find task in backlog.org** under `* Current WIP` > `** Active`:
-   - Look for `*** TODO [$1]` entry
+1. **Find the task** in `docs/design/*.org` by the heading containing `[$1]`.
 
-2. **Move to Blocked section**:
-   - Cut the task from `** Active`
-   - Paste under `** Blocked`
-   - Add `:REASON:` property with the provided reason
+2. **Change its state** to `HOLD` and add `:REASON:` to its property drawer:
 
-3. **Confirm** the move
+Before:
+```org
+** WIP [DAB-001-01] Task title
+:PROPERTIES:
+:EFFORT: M
+:QUEUED: [2026-10-01]
+:END:
+```
+
+After:
+```org
+** HOLD [DAB-001-01] Task title
+:PROPERTIES:
+:EFFORT: M
+:QUEUED: [2026-10-01]
+:REASON: Waiting for dependency release
+:END:
+```
+
+3. If the task was `WIP`, update `:HANDOFF:` with whatever the next person needs to pick it back up.
+
+4. **Commit** the doc on its own: `chore: hold DAB-001-01`.
+
+5. **Confirm** by showing `bin/backlog`; the task is now under *On hold*.
+
+To release a hold, set the state back to `TODO` (or `WIP` via `/task-start`) and delete `:REASON:`.
 
 ## Example
 
@@ -25,27 +46,6 @@ Move task **$1** to blocked/hold status with reason: **$2**
 /task-hold DAB-001-01 Waiting for dependency release
 ```
 
-## Format in backlog.org
-
-Before (in Active):
-```org
-*** TODO [DAB-001-01] Task title
-:PROPERTIES:
-:DESIGN: [[file:...][...]]
-:EFFORT: M
-:END:
-```
-
-After (in Blocked):
-```org
-*** TODO [DAB-001-01] Task title
-:PROPERTIES:
-:DESIGN: [[file:...][...]]
-:EFFORT: M
-:REASON: Waiting for dependency release
-:END:
-```
-
 ## Files
 
-- Backlog: @backlog.org (Current WIP section)
+- Design docs: `docs/design/*.org`

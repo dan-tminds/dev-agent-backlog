@@ -1,11 +1,13 @@
 ---
-description: Queue all tasks from a design doc into backlog.org Active section
+description: Queue all tasks from a design doc - mark each TODO as next
 argument-hint: <doc-number-or-filename>
 ---
 
 # Queue Design Doc
 
-Queue all tasks from design document **$ARGUMENTS** into backlog.org Active section.
+Queue all tasks from design document **$ARGUMENTS**: mark each `TODO` task in it as one the team has said is next.
+
+There is no backlog file. `bin/backlog` computes the backlog from the task headings, and a queued task is a `TODO` heading with a `:QUEUED:` property.
 
 ## Process
 
@@ -72,38 +74,25 @@ Find `* Tasks` section and collect all `** TODO` headings:
 
 Skip headings with states: `DONE`, `HOLD`, `WIP`
 
-### 4. Backlog Integration
+### 4. Mark Each Task Queued
 
-Read `backlog.org` and for each discovered task:
-
-#### New Tasks (ID not in backlog)
-
-Add to `** Active` section:
+For each discovered `TODO` task, add `:QUEUED: [YYYY-MM-DD]` to its property drawer (create the drawer if it has none). Leave a task that already has `:QUEUED:` alone.
 
 ```org
-*** TODO [TASK-ID] Task Title                                            :tags:
+** TODO [DAB-007-01] Task title                                      :p1:
 :PROPERTIES:
-:DESIGN: [[file:docs/design/NNN-doc.org::*Tasks][TASK-ID in NNN-doc.org]]
-:EFFORT: <from source>
-:HANDOFF:
-:WORKED_BY:
+:EFFORT: M
+:QUEUED: [2026-10-07]
 :END:
-
-<description from source>
 ```
 
-#### Existing Tasks (ID found in backlog)
-
-- Move to `** Active` if currently in Blocked or Up Next
-- Update `:EFFORT:` if changed in source
-- Preserve existing `:HANDOFF:` and `:WORKED_BY:`
-- Preserve existing progress notes
+Nothing is copied anywhere: the heading is the task.
 
 ### 5. Create Claude Task List
 
 For each queued task:
 - Create a Claude Task with matching ID and title
-- Add `:CLAUDE_TASK:` property to the backlog entry linking to the task
+- Add `:CLAUDE_TASK:` to the task heading in the doc (working state; `/backlog:design-complete` removes it)
 - Set dependencies if task order implies them (sequential tasks depend on previous)
 
 This creates the coordination layer for multi-session/subagent work.
@@ -133,7 +122,9 @@ Claude Task List ID: <list-id>
 Proceed with plan?
 ```
 
-The plan, backlog tasks, and Claude Tasks are now synchronized - all represent the same work.
+The plan, the queued headings, and the Claude Tasks now represent the same work.
+
+Commit the doc and README on their own (`chore: queue NNN`) before starting, so the other developer sees what is queued the next time they pull.
 
 ### 8. Summary Output
 
@@ -147,9 +138,9 @@ Display results:
 - Questions: 2 DECIDED, 0 OPEN ✓
 - Comments: None found ✓
 
-**Tasks queued to Active:**
-- [DAB-007-01] Task title (NEW)
-- [DAB-007-02] Another task (UPDATED - was in Blocked)
+**Tasks queued:**
+- [DAB-007-01] Task title
+- [DAB-007-02] Another task (already queued)
 
 **Skipped:**
 - [DAB-007-03] Completed task (DONE)
@@ -172,4 +163,5 @@ Display results:
 ## Files
 
 - Design docs: `docs/design/*.org`
-- Backlog: @backlog.org (Current WIP > Active section)
+- Index: `docs/design/README.org`
+- View: `bin/backlog`

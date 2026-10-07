@@ -165,7 +165,8 @@ CLOSED: [2026-10-07]
 
 =plugin/scripts/backlog.py=, stdlib only, with tests in =plugin/scripts/tests/=. Active view grouped by doc, =--all=, =--questions=, =--org=, =--next-number= (local and =origin/main=), =--check= (duplicate numbers, duplicate task IDs, working state left in a =Complete= or =Superseded= doc). Lists loose ends.
 
-** TODO [DAB-017-02] The task commands write state into the doc          :p0:
+** DONE [DAB-017-02] The task commands write state into the doc          :p0:
+CLOSED: [2026-10-07]
 :PROPERTIES:
 :EFFORT: M
 :END:

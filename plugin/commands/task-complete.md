@@ -1,47 +1,40 @@
 ---
-description: Mark a task complete - update source doc and remove from backlog.org
+description: Mark a task complete in its design doc
 argument-hint: <task-id> [version]
 ---
 
 # Task Complete
 
-Mark task **$1** as DONE and reconcile with source document.
+Mark task **$1** as DONE in its design doc.
 
 ## Process
 
-1. **Find task in backlog.org** under `* Current WIP` > `** Active`:
-   - Look for `*** TODO [$1]` or `*** WIP [$1]` entry
-   - Get `:DESIGN:` link to find canonical location (if present)
-   - Note `:WORKED_BY:` value for attribution
+1. **Find the task** in `docs/design/*.org` by the heading containing `[$1]`. Note `:WORKED_BY:`.
 
 2. **Gather attribution**:
-   - Ask: "Who completed this task? (claude-code / human)"
-   - Look for current transcript in `~/.claude/projects/` directory
+   - Ask: "Who completed this task? (claude-code / human / both)" unless it is obvious from the session
 
-3. **Update source document**:
-   - Change `** TODO` to `** DONE`
-   - Add `CLOSED: [YYYY-MM-DD]` timestamp
-   - If version provided ($2), add `:VERSION:` property
+3. **Update the heading**:
+   - Change `TODO`/`WIP`/`HOLD` to `DONE`
+   - Add `CLOSED: [YYYY-MM-DD]` on the line after the heading
+   - If version provided ($2), add `:VERSION:`
    - Add `:COMPLETED_BY:` from step 2
-   - Add `:WORKED_BY:` from backlog entry
-   - Add `:TRANSCRIPT:` link if transcript found
+   - Keep `:WORKED_BY:`
+   - Remove `:QUEUED:`, `:HANDOFF:` and `:REASON:` — they described work in progress
+   - Leave the `:working:` subtree for now; `/backlog:design-complete` decides what in it is a finding
 
-4. **Remove from backlog.org**:
-   - Delete the task entry from Active section
-
-5. **Prompt for CHANGELOG.md**:
+4. **Prompt for CHANGELOG.md** (if the project has one):
    - Ask: "Add to CHANGELOG.md? (Added/Changed/Fixed/Removed/Skip)"
-   - If not Skip, add entry under `## [Unreleased]` in appropriate section
+   - If not Skip, add an entry under `## [Unreleased]`
+
+5. **Commit** the doc (and CHANGELOG) with the task ID in the message, e.g. `feat: <what it does> (PROJECT-NNN-XX)`. `/reconcile-design-docs` finds tasks by their ID in the log.
 
 6. **Check for document completion**:
-   - Scan the source design doc's `* Tasks` section
-   - Count remaining `** TODO` and `** WIP` entries
-   - If zero remaining (all are `** DONE`):
-     - Prompt: "All tasks in this design doc are complete. Mark document as Complete?"
-     - If yes: set `#+STATUS: Complete` in design doc
-     - Update `docs/design/README.org` index
+   - Count remaining `TODO`, `WIP` and `HOLD` task headings in the doc
+   - If none remain, ask: "All tasks in this design doc are complete. Mark it Complete and clear its working state?"
+   - If yes, run `/backlog:design-complete <doc>`
 
-7. **Confirm** the reconciliation
+7. **Confirm** with `bin/backlog`.
 
 ## Example
 
@@ -49,15 +42,16 @@ Mark task **$1** as DONE and reconcile with source document.
 /task-complete DAB-001-01 v1.0
 ```
 
-Marks DAB-001-01 as DONE with version v1.0.
-
-## Format in Source Doc
+## Format in the Doc
 
 Before:
 ```org
-** TODO [DAB-001-01] Task title
+** WIP [DAB-001-01] Task title
 :PROPERTIES:
 :EFFORT: M
+:QUEUED: [2026-01-02]
+:HANDOFF: Tests written, implementation half done
+:WORKED_BY: claude-code, human
 :END:
 ```
 
@@ -70,11 +64,10 @@ CLOSED: [2026-01-04]
 :VERSION: v1.0
 :COMPLETED_BY: claude-code
 :WORKED_BY: claude-code, human
-:TRANSCRIPT: [[file:~/.claude/projects/.../conversation.md]]
 :END:
 ```
 
 ## Files
 
-- Backlog: @backlog.org (Current WIP section)
-- Follow `:DESIGN:` link to find canonical location (if present)
+- Design docs: `docs/design/*.org`
+- Changelog: `CHANGELOG.md`
