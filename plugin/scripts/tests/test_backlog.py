@@ -429,5 +429,87 @@ class NextNumberAgainstARemoteTest(unittest.TestCase):
             self.assertEqual((code, out.getvalue()), (0, "006\n"))
 
 
+class RenumberRefsTest(unittest.TestCase):
+    """Two branches each made a 021. Ours yields and becomes 022."""
+
+    def git(self, *args):
+        import subprocess
+
+        return subprocess.run(
+            ["git", "-c", "user.name=t", "-c", "user.email=t@t", "-c", "init.defaultBranch=main", *args],
+            cwd=self.root,
+            check=True,
+            capture_output=True,
+            text=True,
+        ).stdout.strip()
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.root = Path(self.tmp.name)
+        self.git("init")
+        write(self.root, "docs/design/021-theirs.org", "#+TITLE: 021 - Theirs\n\n* Tasks\n\n** TODO [HL-021-01] Theirs\n")
+        write(self.root, "app/code.py", "# HL-021-01 theirs\n")
+        self.git("add", ".")
+        self.git("commit", "-m", "theirs")
+        self.base = self.git("rev-parse", "HEAD")
+
+        write(self.root, "docs/design/021-mine.org", "#+TITLE: 021 - Mine\n\n* Tasks\n\n** TODO [HL-021-01] Mine\n")
+        (self.root / "app/code.py").write_text("# HL-021-01 theirs\n# HL-021-01 mine\n")
+        self.git("add", ".")
+        self.git("commit", "-m", "mine (HL-021-01)")
+        write(self.root, "app/new.py", "x = 1  # HL-021-01, not yet committed\n")
+        self.git("mv", "docs/design/021-mine.org", "docs/design/022-mine.org")
+
+    def tearDown(self):
+        self.tmp.cleanup()
+
+    def read(self, relpath):
+        return (self.root / relpath).read_text()
+
+    def test_rewrites_only_lines_added_since_base(self):
+        rewritten, left = backlog.renumber_refs(self.root, "HL-021", "HL-022", self.base, write=True)
+
+        self.assertEqual(self.read("app/code.py"), "# HL-021-01 theirs\n# HL-022-01 mine\n")
+        self.assertEqual(self.read("app/new.py"), "x = 1  # HL-022-01, not yet committed\n")
+        self.assertIn("** TODO [HL-022-01] Mine", self.read("docs/design/022-mine.org"))
+        self.assertIn("** TODO [HL-021-01] Theirs", self.read("docs/design/021-theirs.org"))
+
+        self.assertEqual(
+            sorted((r.path, r.line) for r in rewritten),
+            [("app/code.py", 2), ("app/new.py", 1), ("docs/design/022-mine.org", 5)],
+        )
+        self.assertEqual(
+            sorted((r.path, r.line) for r in left),
+            [("app/code.py", 1), ("docs/design/021-theirs.org", 5)],
+        )
+
+    def test_dry_run_changes_nothing(self):
+        rewritten, _ = backlog.renumber_refs(self.root, "HL-021", "HL-022", self.base, write=False)
+        self.assertEqual(len(rewritten), 3)
+        self.assertEqual(self.read("app/code.py"), "# HL-021-01 theirs\n# HL-021-01 mine\n")
+
+    def test_until_limits_to_a_merged_range(self):
+        tip = self.git("rev-parse", "HEAD")
+        rewritten, _ = backlog.renumber_refs(self.root, "HL-021", "HL-022", self.base, tip=tip, write=False)
+        self.assertEqual(
+            sorted((r.path, r.line) for r in rewritten),
+            [("app/code.py", 2)],
+        )
+
+    def test_main_prints_both_lists(self):
+        from io import StringIO
+
+        out = StringIO()
+        code = backlog.main(
+            ["--root", str(self.root), "--renumber-refs", "HL-021", "HL-022", "--since", self.base],
+            stdout=out,
+            stderr=StringIO(),
+        )
+        self.assertEqual(code, 0)
+        self.assertIn("Would rewrite 3 references", out.getvalue())
+        self.assertIn("app/code.py:2  # HL-021-01 mine", out.getvalue())
+        self.assertIn("Left 2, not on a line added since", out.getvalue())
+
+
 if __name__ == "__main__":
     unittest.main()

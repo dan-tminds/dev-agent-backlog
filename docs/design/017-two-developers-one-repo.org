@@ -200,7 +200,8 @@ CLOSED: [2026-10-07]
 
 =/new-design-doc= and its skill: fetch, =--next-number=, stub with =:ID:=, commit two files against =origin/main=, push, cherry-pick, retry on rejection, say so when unreserved. The template gets an =:ID:= drawer.
 
-** TODO [DAB-017-06] =/backlog:renumber-design-doc=                       :p1:
+** DONE [DAB-017-06] =/backlog:renumber-design-doc=                       :p1:
+CLOSED: [2026-10-07]
 :PROPERTIES:
 :EFFORT: M
 :END:

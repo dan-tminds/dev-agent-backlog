@@ -16,7 +16,8 @@ Scan design documents and cross-reference task statuses with evidence from git l
 1. **Enumerate design docs**:
    - Find all `docs/design/[0-9]*.org` files
    - If pattern provided ($1), filter to matching docs
-   - Skip docs with `#+STATUS: Complete` or `#+STATUS: Archived`
+   - Skip docs with `#+STATUS: Complete`, `Superseded` or `Archived`
+   - Run `bin/backlog --check` first and report what it finds: a numbering collision makes task-ID evidence ambiguous until it is repaired
 
 2. **For each design doc** (use subagents if >3 docs):
    - Parse document header for `#+STATUS:` and `#+TITLE:`
@@ -27,6 +28,10 @@ Scan design documents and cross-reference task statuses with evidence from git l
    - **Git log**: Search for task ID in commit messages
      ```bash
      git log --oneline --all --grep="TASK-ID"
+     ```
+   - **Aliases**: if the doc has `#+ALIASES: PREFIX-OLD <base>..<tip>` (it was renumbered after a collision; see `/backlog:renumber-design-doc`), also search the old ID, *but only in that range* — outside it the old ID belongs to the doc that kept the number:
+     ```bash
+     git log --oneline --grep="PREFIX-OLD-XX" <base>..<tip>
      ```
    - **CHANGELOG.md**: Search for task ID or related keywords
    - **Source code**: Check if described functionality exists

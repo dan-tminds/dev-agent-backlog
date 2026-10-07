@@ -12,6 +12,11 @@ belong to no doc are the files in docs/loose-ends/. See design doc 017.
     bin/backlog --next-number    the next design doc number, local and origin/main
     bin/backlog --check          duplicate numbers and task IDs, stale working state
 
+    bin/backlog --renumber-refs HL-021 HL-022 --since <base> [--until <tip>] [--write]
+        After a numbering collision: rewrite HL-021-NN to HL-022-NN, but only on
+        lines added since <base> (on this branch, or in <base>..<tip>). Every other
+        HL-021-NN might mean the doc that kept the number, so it is listed, not touched.
+
 Standard library only, so it runs anywhere python3 does.
 """
 
@@ -355,6 +360,69 @@ def check(docs):
     return problems
 
 
+@dataclass
+class Ref:
+    path: str
+    line: int
+    text: str
+
+
+def git(root, *args):
+    return subprocess.run(
+        ["git", "-C", str(root), *args], capture_output=True, text=True, check=True
+    ).stdout
+
+
+def added_lines(root, base, tip=None):
+    """{path: {line text, ...}} for every line added in base..tip, or since base
+    in the working tree (untracked files included) when there is no tip."""
+    diff = git(root, "diff", "-U0", "--no-color", "--no-renames", "--no-ext-diff", base, *([tip] if tip else []))
+    added, path = {}, None
+    for line in diff.splitlines():
+        if line.startswith("+++ "):
+            path = line[6:] if line.startswith("+++ b/") else None
+        elif line.startswith("+") and path:
+            added.setdefault(path, set()).add(line[1:])
+    if tip is None:
+        for path in git(root, "ls-files", "--others", "--exclude-standard").splitlines():
+            try:
+                added.setdefault(path, set()).update((Path(root) / path).read_text().splitlines())
+            except (UnicodeDecodeError, OSError):
+                pass
+    return added
+
+
+def renumber_refs(root, old, new, base, tip=None, write=False):
+    """Rewrite old-NN to new-NN on lines added since base; list the rest.
+
+    Returns (rewritten, left), each a list of Ref."""
+    pattern = re.compile(re.escape(old) + r"-(?=\d{2}[a-z]?\b)")
+    added = added_lines(root, base, tip)
+    tracked = git(root, "ls-files").splitlines()
+    untracked = git(root, "ls-files", "--others", "--exclude-standard").splitlines()
+    rewritten, left = [], []
+    for path in sorted(set(tracked + untracked)):
+        full = Path(root) / path
+        try:
+            lines = full.read_text().splitlines(keepends=True)
+        except (UnicodeDecodeError, OSError):
+            continue
+        changed = False
+        for number, line in enumerate(lines, start=1):
+            if not pattern.search(line):
+                continue
+            ref = Ref(path=path, line=number, text=line.strip())
+            if line.rstrip("\r\n") in added.get(path, ()):
+                rewritten.append(ref)
+                lines[number - 1] = pattern.sub(new + "-", line)
+                changed = True
+            else:
+                left.append(ref)
+        if changed and write:
+            full.write_text("".join(lines))
+    return rewritten, left
+
+
 def find_root(start):
     for candidate in [start, *start.parents]:
         if (candidate / DESIGN_DIR).is_dir():
@@ -371,6 +439,10 @@ def main(argv, stdout=sys.stdout, stderr=sys.stderr):
     parser.add_argument("--next-number", action="store_true", help="next design doc number")
     parser.add_argument("--ref", default="origin/main", help="ref --next-number also counts")
     parser.add_argument("--check", action="store_true", help="report collisions and stale state")
+    parser.add_argument("--renumber-refs", nargs=2, metavar=("OLD", "NEW"), help="e.g. HL-021 HL-022")
+    parser.add_argument("--since", help="with --renumber-refs: the merge base")
+    parser.add_argument("--until", help="with --renumber-refs: the branch tip, if already merged")
+    parser.add_argument("--write", action="store_true", help="with --renumber-refs: apply")
     args = parser.parse_args(argv)
 
     root = Path(args.root) if args.root else find_root(Path.cwd())
@@ -381,6 +453,20 @@ def main(argv, stdout=sys.stdout, stderr=sys.stderr):
         if remote is None:
             print(f"({args.ref} not readable; counted local docs only)", file=stderr)
         stdout.write(next_number(local, remote or []) + "\n")
+        return 0
+
+    if args.renumber_refs:
+        if not args.since:
+            parser.error("--renumber-refs needs --since <base>")
+        old, new = args.renumber_refs
+        rewritten, left = renumber_refs(root, old, new, args.since, args.until, args.write)
+        span = f"in {args.since[:10]}..{args.until[:10]}" if args.until else f"since {args.since[:10]}"
+        verb = "Rewrote" if args.write else "Would rewrite"
+        stdout.write(f"{verb} {len(rewritten)} references ({span}):\n")
+        stdout.write("".join(f"  {r.path}:{r.line}  {r.text}\n" for r in rewritten))
+        if left:
+            stdout.write(f"\nLeft {len(left)}, not on a line added {span}:\n")
+            stdout.write("".join(f"  {r.path}:{r.line}  {r.text}\n" for r in left))
         return 0
 
     docs = load_docs(root)
