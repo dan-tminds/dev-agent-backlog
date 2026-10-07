@@ -11,9 +11,7 @@ This skill helps identify when a design document should be created and guides th
 
 **Before triggering, check that the project has been set up with the backlog system.**
 
-Look for either:
-- `backlog.org` in the project root, OR
-- `docs/design/` directory exists
+Look for a `docs/design/` directory.
 
 If neither exists, do NOT proactively trigger this skill. The project hasn't been
 set up with the backlog system yet. Silently skip - don't suggest setup or explain
@@ -77,7 +75,7 @@ Ask:
 ### 3. Use Org-Mode Properly
 
 Remind yourself:
-- Documents are numbered sequentially (001, 002, ...) - check existing docs for next number
+- Documents are numbered sequentially, and the number is *reserved on the remote* before the doc is written: `/new-design-doc` pushes a two-file stub commit to `origin/main` (design doc 017). Don't pick a number by listing local files — another developer may have taken it on their branch.
 - Add `#+CATEGORY:` to frontmatter (use categories from `README.org`)
 - Use `** TODO [PROJECT-NNN-XX] Task title` (not markdown checkboxes)
 - Use `** OPEN Question` / `** DECIDED Question` (not plain text)
@@ -92,8 +90,8 @@ Add the new doc to `docs/design/README.org` in the appropriate section.
 
 After converting, offer to queue extracted tasks:
 - List tasks with their new IDs
-- Ask which to queue to backlog Active section
-- Use `/task-queue` for each selected task
+- Ask which to queue
+- Use `/task-queue` for each selected task (it marks the heading `:QUEUED:`)
 
 ## What Makes a Good Design Doc
 

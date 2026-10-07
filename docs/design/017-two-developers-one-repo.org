@@ -1,3 +1,6 @@
+:PROPERTIES:
+:ID: 84a0e95b-de9a-44c2-b498-e9c76ae19579
+:END:
 #+TITLE: 017 - Two Developers, One Repo
 #+AUTHOR: Dan Milstein
 #+STATUS: Draft
@@ -189,7 +192,8 @@ CLOSED: [2026-10-07]
 
 =docs/loose-ends/=, one file per note, and =/backlog:loose-end=.
 
-** TODO [DAB-017-05] Reserve the number by pushing the stub              :p0:
+** DONE [DAB-017-05] Reserve the number by pushing the stub              :p0:
+CLOSED: [2026-10-07]
 :PROPERTIES:
 :EFFORT: M
 :END:

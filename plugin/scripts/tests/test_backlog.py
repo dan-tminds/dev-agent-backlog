@@ -396,5 +396,38 @@ class MainTest(unittest.TestCase):
         self.assertEqual(out, "022\n")
 
 
+class NextNumberAgainstARemoteTest(unittest.TestCase):
+    """The case reserving a number depends on: someone else pushed 005."""
+
+    def git(self, cwd, *args):
+        import subprocess
+
+        subprocess.run(
+            ["git", "-c", "user.name=t", "-c", "user.email=t@t", "-c", "init.defaultBranch=main", *args],
+            cwd=cwd,
+            check=True,
+            capture_output=True,
+        )
+
+    def test_counts_origin_main(self):
+        from io import StringIO
+
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp = Path(tmp)
+            self.git(tmp, "init", "--bare", "origin.git")
+            self.git(tmp, "clone", "origin.git", "theirs")
+            self.git(tmp, "clone", "origin.git", "mine")
+            write(tmp / "theirs", "docs/design/005-theirs.org", "#+TITLE: 005 - Theirs\n")
+            self.git(tmp / "theirs", "add", ".")
+            self.git(tmp / "theirs", "commit", "-m", "reserve 005")
+            self.git(tmp / "theirs", "push", "origin", "HEAD:main")
+            write(tmp / "mine", "docs/design/003-mine.org", "#+TITLE: 003 - Mine\n")
+            self.git(tmp / "mine", "fetch", "origin")
+
+            out = StringIO()
+            code = backlog.main(["--root", str(tmp / "mine"), "--next-number"], stdout=out, stderr=StringIO())
+            self.assertEqual((code, out.getvalue()), (0, "006\n"))
+
+
 if __name__ == "__main__":
     unittest.main()
