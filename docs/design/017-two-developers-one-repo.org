@@ -208,7 +208,8 @@ CLOSED: [2026-10-07]
 
 Which doc yields, what gets rewritten, branch-added lines only for task IDs, =#+ALIASES:= with the commit range, and =/reconcile-design-docs= searching aliases in range.
 
-** TODO [DAB-017-07] =/backlog:design-complete=                          :p1:
+** DONE [DAB-017-07] =/backlog:design-complete=                          :p1:
+CLOSED: [2026-10-07]
 :PROPERTIES:
 :EFFORT: S
 :END:
