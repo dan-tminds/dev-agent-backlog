@@ -42,6 +42,7 @@ its rationale, and any implementation tasks.
 | 014 | [[file:014-spec-driven-development-research.org][Spec-Driven Development Research]] | Complete |
 | 015 | [[file:015-backlog-md-patterns.org][Backlog.md Patterns Analysis]] | Draft |
 | 016 | [[file:016-multi-agent-coordination-protocol.org][Multi-Agent Coordination Protocol]] | Draft |
+| 017 | [[file:017-two-developers-one-repo.org][Two Developers, One Repo]] | Draft |
 
 ** Templates
 

@@ -1,0 +1,284 @@
+#+TITLE: 017 - Two Developers, One Repo
+#+AUTHOR: Dan Milstein
+#+STATUS: Draft
+#+CATEGORY: architecture
+#+CREATED: [2026-10-07]
+#+LAST_MODIFIED: [2026-10-07]
+#+SETUPFILE: ../../org-setup.org
+
+* Summary
+
+The system as built assumes one developer and one branch. With two developers in two worktrees it fails in three places: two people create design doc =021= on their own branches, two branches that each finished something both rewrite the top of =backlog.org=, and the design docs grow until reading them costs more context than they save. This document removes =backlog.org= as a committed file and makes the backlog a view over the docs, reserves a design doc's number by pushing it to =main= the moment it is created and repairs the collision when that discipline slips, clears a doc's working state in its own commit when it goes =Complete=, and adds a checkpoint: a reviewed design doc that says what we now believe and supersedes the docs it summarizes.
+
+* Motivation
+
+** Where it came from
+
+Written while moving a real project (Highlighter, prefix =HL=, twenty-one design docs and a 400-line =backlog.org=) from one programmer to two. Nothing here is hypothetical: the first week of a second programmer produced a doc numbering collision, and the first attempt to merge branches produced a set of =backlog.org= conflicts that could not be resolved by reading them.
+
+** The number is in more places than the filename
+
+A design doc's number is in its filename, in about a hundred =file:= links, and — because task IDs carry it — in every =[HL-021-03]= that the code cites in a comment (443 of them in Highlighter) and in every commit message that names a task. The links and the code can be rewritten. The commit messages cannot, and =/reconcile-design-docs= reads them. So the collision is cheap to prevent and expensive to repair, and a repair has to leave something behind for the commit history to resolve against.
+
+** =backlog.org= is a journal, and journals do not merge
+
+The template's =backlog.org= is a short list of task stubs. In use it grew a "Where things stand" section that every finished piece of work prepends a paragraph to, handoff notes, progress notes, and notes that belong to no task at all. Two branches that each finish something each insert prose at the same anchor, and git cannot merge prose. =merge=union= in =.gitattributes= would make the conflicts go away by keeping both sides' lines, which is right for an append-only list and wrong for prose that gets edited: it would keep the stale paragraph next to its replacement.
+
+Almost all of that prose already has a better home. Each design doc carries its own argument and, in practice, a "What building it found" section; the backlog's paragraph about a doc repeats it. What is left over — lint is red, the stylesheet is overdue for a restructure — is a small number of notes that belong to no doc.
+
+** The docs only grow
+
+Twenty-one docs is eight thousand lines. An agent asked to "read the design docs" before touching the record schema either reads all of it or guesses which ones matter. The docs are also where decisions were *made*, not where they ended up: decision 003 was revised by 008 and again by 014, and the only way to learn the current belief is to read all three in order.
+
+** What 016 proposes, and why this goes another way
+
+[[file:016-multi-agent-coordination-protocol.org][016]] keeps =backlog.org= central and coordinates writes to it: =:CLAIMED_BY:= with a push as the lock, per-task =.progress/= files, and pull-before-read. That is the right shape for many agents contending for one queue. It is the wrong shape for two humans who each work one design doc at a time, because it keeps the shared file and adds protocol around it; the conflict here comes from the shared file existing at all. What this document takes from 016 is its one load-bearing idea — that a push is the only atomic operation git offers — and spends it on the one resource that really is shared: the next design doc number.
+
+* Design
+
+** The backlog is a view, not a file
+
+There is no committed =backlog.org=. What it showed — what is in progress, what is held and why, what is queued next — is computed from the task headings in =docs/design/*.org= by =bin/backlog=, a stdlib-only Python script the plugin ships and =/backlog:setup= installs. Nobody needs Emacs and nobody needs the plugin to read it:
+
+#+begin_src sh
+  bin/backlog                 # in progress, held, queued — grouped by doc
+  bin/backlog --all           # and every unqueued TODO in a live doc
+  bin/backlog --questions     # every OPEN question
+  bin/backlog --org > backlog.org   # the same, as org, with links that jump to the heading
+  bin/backlog --next-number   # max of the local docs and origin/main, plus one
+  bin/backlog --check         # duplicate numbers, duplicate task IDs, leftover working state
+#+end_src
+
+=backlog.org= goes into =.gitignore=, so someone who likes opening it in Emacs regenerates it with =--org= and nothing they do to it can conflict.
+
+** Where the working state lives
+
+On the task heading, in the doc that owns it. Two people now conflict only when they are working the same doc, which is a real conflict and one they would want to know about.
+
+#+begin_src org
+  ,** WIP [HL-021-03] The search form, drawn like Airbnb's                :p1:
+  :PROPERTIES:
+  :EFFORT: M
+  :QUEUED: [2026-10-07]
+  :WORKED_BY: claude-code, dan
+  :HANDOFF: The date picker is the open question; the rest renders.
+  :END:
+
+  The task's own description, which stays.
+
+  ,*** Working notes                                                    :working:
+  [2026-10-07] Built the form as a single row. Two inputs wrap at 900px.
+#+end_src
+
+ - =TODO= / =WIP= / =HOLD= / =DONE= are the state, as before. =HOLD= carries =:REASON:=.
+
+ - =:QUEUED:= is what used to be "in the Active section": a TODO the team has said is next. =/task-queue= and =/queue-design-doc= set it.
+
+ - =:HANDOFF:= is the note for whoever picks it up next, as before.
+
+ - Progress notes go under a child heading tagged =:working:=. The tag is what makes clearing them mechanical.
+
+** Loose ends
+
+A note that belongs to no doc goes in =docs/loose-ends/<slug>.org=, one file per note, so two people conflict only if they edit the same note. A loose end that turns out to belong to a doc moves into it; one that gets resolved is deleted, and git remembers it. =bin/backlog= lists them under the active work.
+
+** Reserving a number
+
+=/new-design-doc= claims the number on =main= before anyone writes a word of the doc:
+
+ 1. =git fetch origin=, then =bin/backlog --next-number=, which takes the larger of the local docs and =origin/main='s.
+
+ 2. Write a stub — title, =#+STATUS: Draft=, a fresh =:ID:=, the template's headings — and its row in =docs/design/README.org=.
+
+ 3. Commit those two files alone, on top of =origin/main=, and push to =main=. On a branch or in a worktree that means a commit made against =origin/main= and pushed with =git push origin <sha>:main=, then cherry-picked onto the working branch.
+
+ 4. If the push is rejected, someone else just pushed. Fetch, take the next number, rename the stub — nothing cites it yet — and push again.
+
+ 5. If there is no remote, or the developer says not to push, create the doc anyway and say plainly that the number is not reserved.
+
+The commit is tiny and touches only new lines, which is what makes pushing it straight to =main= safe even for a team that otherwise works on branches.
+
+The =:ID:= is an org-id (a UUID in a file-level property drawer, as org-roam writes it). It is not what prevents or repairs the collision — the slug already tells two =021=s apart. It is the doc's identity once its number or place can change: it is what an alias, a checkpoint, and a =id:= link point at.
+
+** When two docs got the same number anyway
+
+=bin/backlog --check= reports two files with one number. =/backlog:renumber-design-doc= repairs it:
+
+ - *The doc already on =origin/main= keeps the number.* The other one yields. If both are on =main= (the collision was merged), the one merged second yields.
+
+ - *Best run before the yielding branch merges.* Then every reference to the yielding doc is on that branch alone.
+
+ - *Rewrite everything that is unambiguous:* the filename (=git mv=), =#+TITLE=, the task IDs inside the doc, =file:= links to the old filename anywhere in the repo, and the doc's row in the README index.
+
+ - *Rewrite task-ID references only where the yielding branch put them.* After a collision, =HL-021-03= in the code could mean either doc. The skill rewrites an occurrence only if it is on a line the yielding branch added since its merge base with =main= (=git diff <base>..<tip>=); every other occurrence is left and listed.
+
+ - *Leave an alias for the history.* Commit messages on the yielding branch still say =HL-021-03=, and they cannot be changed. The doc records =#+ALIASES: HL-021 <base>..<tip>=, and =/reconcile-design-docs=, searching the log for evidence about =HL-022-03=, also searches =HL-021-03= — but only in that commit range, because outside it the old ID means the other doc.
+
+ - *Its own commit*, named for the rename, so the diff is reviewable on its own.
+
+** Clearing working state when a doc is Complete
+
+=/backlog:design-complete= runs when the last task closes (=/task-complete= calls it) and can be run on any doc already marked =Complete=. It removes the =:working:= subtrees and the =:QUEUED:=, =:HANDOFF:=, =:REASON:=, =:CLAUDE_TASK:= and =:TRANSCRIPT:= properties, leaving the argument, the decisions, the tasks with their =CLOSED:= dates and attribution, and the doc's findings. It is its own commit, and the doc records =#+WORKING_STATE: <sha>= — the commit before the cleanup — so nothing is lost and finding it does not require =git log -p=.
+
+The line between working state and findings is the one judgement in it. A working note that records something a later reader needs ("the e2e server boots from scratch on every run, which is a third of the time") is a finding, and the command moves it into the doc's findings section before deleting the subtree. It asks when it cannot tell.
+
+** Checkpoints
+
+=/backlog:checkpoint= writes a design doc whose subject is the other design docs. It is numbered and reserved like any other, and it goes through =/design-review=, which is the round of human review the team wanted to have anyway.
+
+ - *What we believe.* Present tense, one claim per heading, each citing the docs it came from. Where a decision was revised, the current one, with the revision cited.
+
+ - *What we stopped believing.* Decisions that were reversed, and what reversed them. This is the section a reader of the old docs most needs and least often gets.
+
+ - *What is still open.* Every =OPEN= question in the docs it covers, carried forward as its own =OPEN= question; the originals point at it.
+
+ - *What it supersedes.* The list of docs, by number and =:ID:=.
+
+Only docs with no =TODO=, =WIP= or =HOLD= tasks can be covered. When the checkpoint is =Accepted=, each covered doc gets =#+STATUS: Superseded= and =#+SUPERSEDED_BY:=, and the README index says so. The files stay where they are: what an agent spends context on is what it reads, not where the file lives, and moving them would mean rewriting every link. The CLAUDE.md the setup writes tells an agent to start from the newest checkpoint and the docs after it, and to open a superseded doc only to follow a citation.
+
+* Decision
+
+All five, in this order, because the earlier ones are independent of the later ones and the first one is where the pain is:
+
+ 1. The backlog as a view, working state in the docs, loose ends.
+
+ 2. Reserving a number.
+
+ 3. Clearing working state on Complete.
+
+ 4. The renumbering repair.
+
+ 5. Checkpoints, which need 3 and benefit from 4.
+
+=/backlog:migrate-backlog= moves an existing project across: each entry in =backlog.org= becomes properties and a =:working:= note on its task, each paragraph about a doc goes to that doc or is dropped as a repeat of it, each paragraph about nothing becomes a loose end, and what it cannot place it shows rather than guesses.
+
+* Tasks
+:PROPERTIES:
+:CATEGORY: tasks
+:END:
+
+** TODO [DAB-017-01] =bin/backlog=: the view, the next number, and the check  :p0:
+:PROPERTIES:
+:EFFORT: M
+:END:
+
+=plugin/scripts/backlog.py=, stdlib only, with tests in =plugin/scripts/tests/=. Active view grouped by doc, =--all=, =--questions=, =--org=, =--next-number= (local and =origin/main=), =--check= (duplicate numbers, duplicate task IDs, working state left in a =Complete= or =Superseded= doc). Lists loose ends.
+
+** TODO [DAB-017-02] The task commands write state into the doc          :p0:
+:PROPERTIES:
+:EFFORT: M
+:END:
+
+=/task-queue=, =/queue-design-doc=, =/task-start=, =/task-hold=, =/task-link= and =/task-complete= read and write the task heading in its design doc. None of them touches =backlog.org=.
+
+** TODO [DAB-017-03] The skills read the docs                            :p0:
+:PROPERTIES:
+:EFFORT: S
+:END:
+
+=backlog-resume=, =backlog-update= and =claude-tasks-sync= use =bin/backlog= and the task headings; =backlog-update= writes progress under =:working:= and offers a loose end for a note with no doc.
+
+** TODO [DAB-017-04] Loose ends                                          :p1:
+:PROPERTIES:
+:EFFORT: S
+:END:
+
+=docs/loose-ends/=, one file per note, and =/backlog:loose-end=.
+
+** TODO [DAB-017-05] Reserve the number by pushing the stub              :p0:
+:PROPERTIES:
+:EFFORT: M
+:END:
+
+=/new-design-doc= and its skill: fetch, =--next-number=, stub with =:ID:=, commit two files against =origin/main=, push, cherry-pick, retry on rejection, say so when unreserved. The template gets an =:ID:= drawer.
+
+** TODO [DAB-017-06] =/backlog:renumber-design-doc=                       :p1:
+:PROPERTIES:
+:EFFORT: M
+:END:
+
+Which doc yields, what gets rewritten, branch-added lines only for task IDs, =#+ALIASES:= with the commit range, and =/reconcile-design-docs= searching aliases in range.
+
+** TODO [DAB-017-07] =/backlog:design-complete=                          :p1:
+:PROPERTIES:
+:EFFORT: S
+:END:
+
+Clears working state in its own commit, records =#+WORKING_STATE:=, moves findings out of working notes first. =/task-complete= calls it.
+
+** TODO [DAB-017-08] =/backlog:checkpoint= and the =Superseded= status    :p2:
+:PROPERTIES:
+:EFFORT: M
+:END:
+
+The command, the status in both README templates, and the step in =/design-review= that marks the covered docs when a checkpoint is accepted.
+
+** TODO [DAB-017-09] Setup without =backlog.org=, and =/backlog:migrate-backlog= :p0:
+:PROPERTIES:
+:EFFORT: M
+:END:
+
+=/backlog:setup= installs =bin/backlog=, ignores =backlog.org=, creates =docs/loose-ends/=, and writes the new CLAUDE.md section. =/reconcile-backlog= checks working state across the docs instead of a file. The backlog template is gone.
+
+** TODO [DAB-017-10] =elisp/workflow-commands.el= still writes =backlog.org= :p2:
+:PROPERTIES:
+:EFFORT: S
+:END:
+
+=backlog/task-queue= should set =:QUEUED:= on the heading at point. The agenda views already read the docs and need nothing.
+
+** TODO [DAB-017-11] This repo's own =backlog.org=                        :p2:
+:PROPERTIES:
+:EFFORT: S
+:END:
+
+Run =/backlog:migrate-backlog= on dev-agent-backlog itself.
+
+** TODO [DAB-017-12] Try it on Highlighter                               :p0:
+:PROPERTIES:
+:EFFORT: M
+:END:
+
+Install from the fork, run =/backlog:migrate-backlog=, renumber the colliding =021=, and use it for a week with two people before calling any of this =Complete=.
+
+* Questions
+:PROPERTIES:
+:CATEGORY: questions
+:END:
+
+** OPEN Should the README index be generated too?
+
+=docs/design/README.org='s table is the other file every new doc touches. Reserving by push serialises the rows, so it has not conflicted yet, but =/reconcile-design-docs= already spends a step keeping it in sync with the docs' own =#+STATUS:=. =bin/backlog --index= could print it, and the README could hold prose and a pointer. Against: the README is where a human lands, and on GitHub a generated file is a file nobody regenerated.
+
+** OPEN Does =:QUEUED:= earn its place?
+
+The alternative is that every =TODO= in an =Accepted= or =Active= doc is on the backlog. That is simpler and loses one thing: saying "these two, of the nine" without editing the doc's status.
+
+** OPEN A fork, or a proposal upstream?
+
+This branch is in a local clone. Upstream's last commit was [2026-02-28] and its own draft (016) goes the other way. The plugin and marketplace names decide what a person with both installed sees; keeping =backlog= as the plugin name keeps every =/backlog:= command the same.
+
+** DECIDED Readable filenames, not hash names
+:PROPERTIES:
+:DECIDED: [2026-10-07]
+:END:
+
+org-roam names files by ID and lets the title be anything. We keep =NNN-slug.org= because a person reading =ls= or a link should know what they are looking at, and pay for it with a repair that rewrites links. The =:ID:= is identity, not a name.
+
+** DECIDED Task-ID references are rewritten only where the yielding branch added them
+:PROPERTIES:
+:DECIDED: [2026-10-07]
+:END:
+
+After a collision the old ID is ambiguous everywhere it appears. A line the yielding branch added can only mean the yielding doc; any other line might mean either, so it is left alone and listed for a person.
+
+** DECIDED Superseded docs stay where they are
+:PROPERTIES:
+:DECIDED: [2026-10-07]
+:END:
+
+Moving them to =archive/= would keep them out of a glob, but agents read what they are told to read, and the move costs a link rewrite across the repo. The status and the CLAUDE.md instruction do the job.
+
+* Changelog
+
+ - *2026-10-07:* Initial draft.
